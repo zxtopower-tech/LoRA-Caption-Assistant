@@ -35,20 +35,20 @@ cd LoRA-Caption-Assistant
 ### 🪟 Windows
 1. Double-click `run.bat`
 2. Wait for the launcher to install dependencies and start servers.
-- **Access**: `http://localhost:7680` (Automatically opens)
+- **Access**: `http://localhost:7788` (Automatically opens)
 
 ### 🐧 Linux / macOS
 1. Open terminal and run:
    ```bash
    ./run.sh
    ```
-- **Access**: `http://localhost:7860` (Automatically opens)
+- **Access**: `http://localhost:7788` (Automatically opens)
 
 ### 🐳 Docker Compose (Recommended)
 ```bash
 docker-compose up -d
 ```
-- **Access**: `http://localhost:8080`
+- **Access**: `http://localhost:7788`
 
 # Usage :
 -   **Web Interface**:
