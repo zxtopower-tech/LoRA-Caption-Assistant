@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
       'process.env.PROFILE_API_TOKEN': JSON.stringify(env.PROFILE_API_TOKEN),
     },
     server: {
-      port: 7860,
+      port: 7788,
       host: true,
       proxy: {
         '/api': {
@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     preview: {
-      port: 7860,
+      port: 7788,
       host: true,
       allowedHosts: true // Allow all hosts for Hugging Face proxy
     }

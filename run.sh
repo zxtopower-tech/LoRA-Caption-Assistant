@@ -56,7 +56,7 @@ BACKEND_PID=$!
 
 echo "[INFO] Starting Frontend..."
 # Run frontend
-cd frontend && npm run dev &
+cd frontend && npm run dev -- --port 7788 &
 FRONTEND_PID=$!
 
 echo ""
@@ -70,10 +70,10 @@ echo "Opening browser..."
 # Open browser based on OS
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sleep 2
-    open http://localhost:7860
+    open http://localhost:7788
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     sleep 2
-    xdg-open http://localhost:7860 > /dev/null 2>&1 &
+    xdg-open http://localhost:7788 > /dev/null 2>&1 &
 fi
 
 # Function to kill processes on exit

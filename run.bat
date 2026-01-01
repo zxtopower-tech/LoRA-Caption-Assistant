@@ -181,8 +181,8 @@ echo.
 echo      Starting Backend Server (Port 8001)...
 start /b "" "%PYTHON_CMD%" -m uvicorn app:app --app-dir backend --host 127.0.0.1 --port 8001 --reload
 
-echo      Starting Frontend Server (Port 7680)...
-start /b "" cmd /c "set PATH=%PATH% && cd frontend && npm run dev -- --port 7680"
+echo      Starting Frontend Server (Port 7788)...
+start /b "" cmd /c "set PATH=%PATH% && cd frontend && npm run dev -- --port 7788"
 
 echo.
 echo  ===================================================================================
@@ -196,7 +196,7 @@ echo  ==========================================================================
 echo.
 
 timeout /t 5 >nul
-start http://localhost:7680
+start http://localhost:7788
 
 echo.
 echo  ===================================================================================
