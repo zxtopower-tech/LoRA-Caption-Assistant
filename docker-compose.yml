@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  lctaz-custom:
+    image: lctaz-custom:latest
+    container_name: lctaz-custom
+    ports:
+      - "8080:8080"
+    volumes:
+      - lctaz-data:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  lctaz-data:

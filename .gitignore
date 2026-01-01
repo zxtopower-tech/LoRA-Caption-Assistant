@@ -1,0 +1,53 @@
+node_modules
+dist
+dist-ssr
+.vite
+backend/.venv
+backend/data
+data
+!data/.gitkeep
+!data/**/.gitkeep
+backend/.tmp_profiles_test
+output
+*.log
+.DS_Store
+*.local
+.env
+.env.local.*
+*.pyc
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist-packages/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+temp/swapfile2
+temp/
+
+# IDE and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+venv/
+env/
+.mypy_cache/

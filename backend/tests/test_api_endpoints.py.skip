@@ -1,0 +1,278 @@
+"""
+Tests for granular file management API endpoints.
+"""
+
+import io
+import json
+import sys
+import zipfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BACKEND_DIR = ROOT_DIR / "backend"
+sys.path.append(str(BACKEND_DIR))
+
+import app as app_module
+
+
+@pytest.fixture(scope="function")
+def client(tmp_path):
+    """Create a test client with temporary projects directory."""
+    # Set temporary projects directory
+    temp_projects = tmp_path / "projects"
+    temp_projects.mkdir()
+
+    # Mock the managers
+    mock_project_manager = MagicMock()
+    mock_history_manager = MagicMock()
+    mock_migration_manager = MagicMock()
+    mock_queue_manager = MagicMock()
+
+    # Create test client
+    test_client = TestClient(app_module.app)
+
+    # Patch the managers in the routers module
+    with patch('routers.projects.project_manager', mock_project_manager), \
+         patch('routers.projects.history_manager', mock_history_manager), \
+         patch('routers.projects.migration_manager', mock_migration_manager), \
+         patch('routers.projects.queue_manager', mock_queue_manager):
+
+        # Setup mock returns
+        mock_project_manager.project_exists.return_value = True
+
+        yield test_client
+
+
+@pytest.fixture
+def sample_project_id():
+    """Sample project UUID."""
+    return "12345678-1234-1234-1234-123456789abc"
+
+
+@pytest.fixture
+def setup_project(client, sample_project_id):
+    """Set up a test project with metadata and directory."""
+    from storage.project_manager import project_manager
+
+    # Create project directory
+    project_manager.ensure_project_dir(sample_project_id)
+
+    # Create metadata file
+    metadata_path = project_manager._projects_dir / f"{sample_project_id}.json"
+    metadata = {
+        "id": sample_project_id,
+        "name": "Test Project",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z",
+    }
+    with metadata_path.open("w", encoding="utf-8") as f:
+        json.dump(metadata, f)
+
+    return sample_project_id
+
+
+class TestProjectEndpoints:
+    """Test project-specific API endpoints."""
+
+    def test_upload_media_uploads_file(self, client, setup_project):
+        """Test uploading a media file."""
+        project_id = setup_project
+
+        content = b"test image data"
+        response = client.post(
+            f"/api/projects/{project_id}/media",
+            files={"file": ("test.png", content, "image/png")}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test.png"
+        assert "url" in data
+
+    def test_upload_media_with_preview(self, client, setup_project):
+        """Test uploading a media file with preview."""
+        project_id = setup_project
+
+        media_content = b"test video data"
+        preview_content = b"test preview data"
+
+        response = client.post(
+            f"/api/projects/{project_id}/media",
+            files={
+                "file": ("test.mp4", media_content, "video/mp4"),
+                "preview": ("test_preview.png", preview_content, "image/png"),
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test.mp4"
+        assert data["preview"] is not None
+
+    def test_upload_media_returns_404_for_nonexistent_project(self, client, sample_project_id):
+        """Test that uploading to nonexistent project returns 404."""
+        response = client.post(
+            f"/api/projects/{sample_project_id}/media",
+            files={"file": ("test.png", b"data", "image/png")}
+        )
+
+        assert response.status_code == 404
+
+    def test_get_captions_returns_map(self, client, setup_project):
+        """Test getting all captions."""
+        project_id = setup_project
+
+        from storage.project_manager import project_manager
+        project_manager.save_caption_file(project_id, "caption1.txt", "content 1")
+        project_manager.save_caption_file(project_id, "caption2.txt", "content 2")
+
+        response = client.get(f"/api/projects/{project_id}/captions")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["caption1.txt"] == "content 1"
+        assert data["caption2.txt"] == "content 2"
+
+    def test_put_captions_updates_files(self, client, setup_project):
+        """Test batch updating captions."""
+        project_id = setup_project
+
+        response = client.put(
+            f"/api/projects/{project_id}/captions",
+            json={
+                "captions": {
+                    "file1.txt": "new content 1",
+                    "file2.txt": "new content 2",
+                }
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "updated" in data
+        assert len(data["updated"]) == 2
+
+    def test_put_captions_skips_unchanged(self, client, setup_project):
+        """Test that unchanged captions are skipped."""
+        project_id = setup_project
+
+        from storage.project_manager import project_manager
+        project_manager.save_caption_file(project_id, "file1.txt", "existing content")
+
+        response = client.put(
+            f"/api/projects/{project_id}/captions",
+            json={
+                "captions": {
+                    "file1.txt": "existing content",  # Same
+                    "file2.txt": "new content",  # Different
+                }
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "file2.txt" in data["updated"]
+        assert "file1.txt" in data["skipped"]
+
+    def test_delete_file_removes_file(self, client, setup_project):
+        """Test deleting a file."""
+        project_id = setup_project
+
+        from storage.project_manager import project_manager
+        project_manager.save_caption_file(project_id, "test.txt", "content")
+
+        response = client.delete(f"/api/projects/{project_id}/files/test.txt")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "deleted"
+
+        # Verify file is gone
+        project_dir = project_manager.project_dir_path(project_id)
+        assert not (project_dir / "test.txt").exists()
+
+    def test_get_file_history_returns_versions(self, client, setup_project):
+        """Test getting file version history."""
+        project_id = setup_project
+
+        from storage.project_manager import project_manager
+        from storage.history_manager import history_manager
+
+        project_manager.save_caption_file(project_id, "test.txt", "v1")
+        history_manager.backup_file(project_id, "test.txt")
+        project_manager.save_caption_file(project_id, "test.txt", "v2")
+        history_manager.backup_file(project_id, "test.txt")
+
+        response = client.get(f"/api/projects/{project_id}/files/test.txt/history")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "versions" in data
+        assert len(data["versions"]) == 2
+
+    def test_migrate_project_migrates_zip(self, client, sample_project_id, tmp_path):
+        """Test manual migration endpoint."""
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+
+        # Create a ZIP file
+        zip_path = projects_dir / f"{sample_project_id}.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("test.txt", "content")
+
+        # Create metadata
+        metadata_path = projects_dir / f"{sample_project_id}.json"
+        metadata = {
+            "id": sample_project_id,
+            "name": "Test Project",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-01T00:00:00Z",
+        }
+        with metadata_path.open("w", encoding="utf-8") as f:
+            json.dump(metadata, f)
+
+        # Update app's projects path
+        import app as app_module
+        original_path = app_module.PROJECTS_PATH
+        app_module.PROJECTS_PATH = projects_dir
+
+        response = client.post(f"/api/projects/{sample_project_id}/migrate")
+
+        app_module.PROJECTS_PATH = original_path
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "migrated"
+
+    def test_download_project_creates_zip(self, client, setup_project):
+        """Test downloading project as ZIP."""
+        project_id = setup_project
+
+        from storage.project_manager import project_manager
+        project_manager.save_caption_file(project_id, "file1.txt", "content")
+
+        response = client.get(f"/api/projects/{project_id}/download")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/zip"
+
+        # Verify ZIP contents
+        zip_content = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_content, "r") as zf:
+            names = zf.namelist()
+            assert "file1.txt" in names
+            # .history should be excluded
+            assert not any(".history" in name for name in names)
+
+    def test_path_traversal_blocked(self, client, setup_project):
+        """Test that path traversal attacks are blocked."""
+        project_id = setup_project
+
+        response = client.delete(f"/api/projects/{project_id}/files/../../etc/passwd")
+
+        # Should return 400 (bad request) or 404 (not found due to sanitization)
+        assert response.status_code in (400, 404)
