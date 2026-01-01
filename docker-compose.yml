@@ -5,7 +5,7 @@ services:
     image: lctaz-custom:latest
     container_name: lctaz-custom
     ports:
-      - "8080:8080"
+      - "7788:7788"
     volumes:
       - lctaz-data:/app/backend/data
     restart: unless-stopped
