@@ -1,5 +1,4 @@
-# Project Name :
-LoRA Caption Assistant
+# LoRA Caption AssistantLoRA Caption Assistant
 
 ![Project Preview](assets/preview.png)
 
@@ -29,8 +28,8 @@ LoRA Caption Assistant is a specialized workspace designed for creators to metic
 
 First, **clone the repository**:
 ```bash
-git clone https://github.com/your-repo/lctaz-custom.git
-cd lctaz-custom
+git clone https://github.com/zxtopower-tech/LoRA-Caption-Assistant.git
+cd LoRA-Caption-Assistant
 ```
 
 ### 🪟 Windows
