@@ -1,30 +1,31 @@
-# LoRA Caption AssistantLoRA Caption Assistant
+# LoRA Caption Assistant
 
 ![Project Preview](assets/preview.png)
 
-# Description :
-LoRA Caption Assistant is a specialized workspace designed for creators to meticulously curate datasets and seamlessly generate AI captions. By bridging the gap between dataset management and creative generation, it empowers you to build higher-quality models with greater ease and precision.
+# Description
+LoRA Caption Assistant is a comprehensive tool for managing image and video datasets. It automates caption generation using Vision Language Models (VLM), ensures no work is lost through robust history management, and integrates ComfyUI to visually verify captions by generating images from them.
 
-# Features :
--   **Effortless Dataset Curation**:
+# Features
+-   **Dataset & History Management**:
     -   **Strict Versioning**: Every change—metadata updates, file replacements—is tracked. Revert to any previous state with confidence.
     -   **Preserved Integrity**: Original files are always safe, while you freely experiment with captions and previews.
     -   **Intuitive Organization**: Drag, drop, and rename files naturally, just like on your desktop.
 
--   **Seamless Creative Flow**:
-    -   **Unified Workspace**: execute complex ComfyUI workflows directly within your project.
+-   **Caption Verification**:
+    -   **Visual Validation**: Verify the accuracy of your captions by generating images directly within the project using ComfyUI.
     -   **Real-time Preview**: See your generated results instantly synced to your project items.
     -   **Workflow Library**: Build and manage your own library of reusable generation templates.
 
--   **Smart Captioning Assistant**:
-    -   **Multi-Model Intelligence**: Leverage Google Gemini or local LLMs to generate detailed, context-aware captions.
-# Requirements :
+-   **Automated VLM Captioning**:
+    -   **Multi-Model Intelligence**: Leverage Google Gemini or local Vision Language Models (VLMs) to generate detailed, context-aware captions for both images and videos.
+
+# Requirements        
 -   **Docker & Docker Compose**: For containerized deployment.
 -   **Development**:
     -   Node.js v18+ (Frontend)
     -   Python 3.10+ (Backend)
 
-# Installation & Quick Start :
+# Installation & Quick Start
 
 First, **clone the repository**:
 ```bash
@@ -50,7 +51,7 @@ docker-compose up -d
 ```
 - **Access**: `http://localhost:7788`
 
-# Usage :
+# Usage
 -   **Web Interface**:
     -   Navigate to the URL provided by your chosen launch method.
     -   Create a project and start uploading media.
@@ -58,15 +59,15 @@ docker-compose up -d
     -   **Backend**: `uvicorn app:app --reload --port 8001` (in `backend/` directory).
     -   **Frontend**: `npm run dev` (in `frontend/` directory).
 
-# Configuration :
+# Configuration
 -   **Docker Volumes**:
     -   `loracaptioner-backend`: Persists `/app/backend` containing:
         -   `data/projects`: Project media and metadata.
         -   `data/workflows`: ComfyUI workflows.
         -   `data/profiles`: User settings.
 
-# License :
+# License
 MIT
 
-# Reference :
+# Reference
 - [Original Documentation](assets/README.original.md)
