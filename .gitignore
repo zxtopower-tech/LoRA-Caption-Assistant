@@ -30,6 +30,7 @@ build/
 htmlcov/
 temp/swapfile2
 temp/
+.kilocode/
 
 # IDE and Editors
 .vscode/
