@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { ComfyPreviewParams, MediaFile } from './types';
 import { updateCaptions } from './services/projectService';
+import { CONFIRM_MODAL_TEXTS } from './types';
 
 // Contexts
 import {
@@ -362,24 +363,6 @@ const App: React.FC = () => {
     projectId: currentProject?.id ?? null,
   });
 
-  // Use caption handlers hook for caption generation
-  const {
-    handleGenerateCaption,
-    handleGenerateAll,
-    handleGenerateSelected,
-    handleRefineSelected,
-  } = useCaptionHandlers({
-    mediaFiles,
-    selectedFiles,
-    bulkGenerationInstructions,
-    bulkInstructions,
-    isQueueEnabled,
-    segmentedAnalysisConfig,
-    _generateCaption,
-    enqueueGenerateRequest,
-    enqueueSegmentedAnalysisRequest,
-  });
-
   // Use media handlers hook for media management
   const {
     handleSelectAll,
@@ -455,7 +438,7 @@ const App: React.FC = () => {
     handlersRef,
   });
 
-  // Use confirm modals hook
+  // Use confirm modals hook first to get showGenerateAllConfirm
   const {
     isConfirmModalOpen,
     isDeleteConfirmOpen,
@@ -464,6 +447,7 @@ const App: React.FC = () => {
     isDownloadConfirmOpen,
     isPreviewConfirmOpen,
     isProjectChangeConfirmOpen,
+    isGenerateAllConfirmOpen,
     conflictInfo,
     deleteItemId,
     pendingUploadFile,
@@ -495,6 +479,10 @@ const App: React.FC = () => {
     confirmProjectChange,
     hideProjectChangeConfirm,
     setIncludeApiKeys,
+    showGenerateAllConfirm,
+    confirmGenerateAllRegenerate,
+    confirmGenerateAllSkipExisting,
+    hideGenerateAllConfirm,
   } = useConfirmModals({
     onDeleteSelected: deleteSelected,
     onDeleteOne: deleteOne,
@@ -528,6 +516,25 @@ const App: React.FC = () => {
     onSetMediaFiles: setMediaFiles,
     onDeleteProject: deleteProject,
     selectedProjectId,
+  });
+
+  // Use caption handlers with showGenerateAllConfirm
+  const {
+    handleGenerateCaption,
+    handleGenerateAll,
+    handleGenerateSelected,
+    handleRefineSelected,
+  } = useCaptionHandlers({
+    mediaFiles,
+    selectedFiles,
+    bulkGenerationInstructions,
+    bulkInstructions,
+    isQueueEnabled,
+    segmentedAnalysisConfig,
+    _generateCaption,
+    enqueueGenerateRequest,
+    enqueueSegmentedAnalysisRequest,
+    showGenerateAllConfirm,
   });
 
   const {
@@ -1064,6 +1071,27 @@ const App: React.FC = () => {
           variant="warning"
           isLoading={isProjectChanging}
           initialFocus="confirm"
+        />
+        <ModalTripleChoice
+          isOpen={isGenerateAllConfirmOpen}
+          title={CONFIRM_MODAL_TEXTS.CAPTION.title}
+          message={
+            <>
+              <p className="mb-2">
+                {CONFIRM_MODAL_TEXTS.MESSAGE.SOME_HAVE_CAPTIONS}
+              </p>
+              <p className="text-gray-400 text-sm">{CONFIRM_MODAL_TEXTS.MESSAGE.WHAT_WOULD_YOU_DO}</p>
+            </>
+          }
+          firstText={CONFIRM_MODAL_TEXTS.BUTTONS.REGENERATE_ALL}
+          secondText={CONFIRM_MODAL_TEXTS.BUTTONS.SKIP_EXISTING}
+          thirdText={CONFIRM_MODAL_TEXTS.BUTTONS.CANCEL}
+          onFirst={confirmGenerateAllRegenerate}
+          onSecond={confirmGenerateAllSkipExisting}
+          onThird={hideGenerateAllConfirm}
+          variant="warning"
+          firstVariant="danger"
+          secondVariant="warning"
         />
 
       </div>

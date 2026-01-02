@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import type { MediaFile } from '../types';
+import type { MediaFile, ConfirmMode } from '../types';
+import { CONFIRM_MODES, CONFIRM_MODAL_TEXTS } from '../types';
 
 /**
  * Conflict information for file upload confirmation modal
@@ -46,6 +47,7 @@ export interface ConfirmModalsReturn {
   isDownloadConfirmOpen: boolean;
   isPreviewConfirmOpen: boolean;
   isProjectChangeConfirmOpen: boolean;
+  isGenerateAllConfirmOpen: boolean;
 
   // Modal data states
   conflictInfo: ConflictInfo | null;
@@ -81,6 +83,10 @@ export interface ConfirmModalsReturn {
   confirmProjectChange: () => void;
   hideProjectChangeConfirm: () => void;
   setIncludeApiKeys: (value: boolean) => void;
+  showGenerateAllConfirm: (callback?: (mode: ConfirmMode) => void) => void;
+  confirmGenerateAllRegenerate: () => void;
+  confirmGenerateAllSkipExisting: () => void;
+  hideGenerateAllConfirm: () => void;
 }
 
 /**
@@ -93,6 +99,7 @@ export interface ConfirmModalsReturn {
  * - Profile upload/download confirmation
  * - Preview generation confirmation
  * - Project change confirmation
+ * - Generate All caption confirmation
  */
 export const useConfirmModals = (params: UseConfirmModalsParams): ConfirmModalsReturn => {
   const {
@@ -116,6 +123,7 @@ export const useConfirmModals = (params: UseConfirmModalsParams): ConfirmModalsR
   const [isDownloadConfirmOpen, setIsDownloadConfirmOpen] = useState(false);
   const [isPreviewConfirmOpen, setIsPreviewConfirmOpen] = useState(false);
   const [isProjectChangeConfirmOpen, setIsProjectChangeConfirmOpen] = useState(false);
+  const [isGenerateAllConfirmOpen, setIsGenerateAllConfirmOpen] = useState(false);
 
   // Modal data states
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
@@ -290,6 +298,37 @@ export const useConfirmModals = (params: UseConfirmModalsParams): ConfirmModalsR
     setPendingProjectChange(null);
   }, []);
 
+  // Generate All confirmation handlers
+  const [generateAllConfirmCallback, setGenerateAllConfirmCallback] = useState<((mode: ConfirmMode) => void) | null>(null);
+
+  const showGenerateAllConfirm = useCallback((callback?: (mode: ConfirmMode) => void) => {
+    if (callback) {
+      setGenerateAllConfirmCallback(() => callback);
+    }
+    setIsGenerateAllConfirmOpen(true);
+  }, []);
+
+  const confirmGenerateAllRegenerate = useCallback(() => {
+    setIsGenerateAllConfirmOpen(false);
+    if (generateAllConfirmCallback) {
+      generateAllConfirmCallback(CONFIRM_MODES.REGENERATE_ALL);
+      setGenerateAllConfirmCallback(null);
+    }
+  }, [generateAllConfirmCallback]);
+
+  const confirmGenerateAllSkipExisting = useCallback(() => {
+    setIsGenerateAllConfirmOpen(false);
+    if (generateAllConfirmCallback) {
+      generateAllConfirmCallback(CONFIRM_MODES.SKIP_EXISTING);
+      setGenerateAllConfirmCallback(null);
+    }
+  }, [generateAllConfirmCallback]);
+
+  const hideGenerateAllConfirm = useCallback(() => {
+    setIsGenerateAllConfirmOpen(false);
+    setGenerateAllConfirmCallback(null);
+  }, []);
+
   return {
     // Modal states
     isConfirmModalOpen,
@@ -299,6 +338,7 @@ export const useConfirmModals = (params: UseConfirmModalsParams): ConfirmModalsR
     isDownloadConfirmOpen,
     isPreviewConfirmOpen,
     isProjectChangeConfirmOpen,
+    isGenerateAllConfirmOpen,
 
     // Modal data states
     conflictInfo,
@@ -334,5 +374,9 @@ export const useConfirmModals = (params: UseConfirmModalsParams): ConfirmModalsR
     confirmProjectChange,
     hideProjectChangeConfirm,
     setIncludeApiKeys: setIncludeApiKeys,
+    showGenerateAllConfirm,
+    confirmGenerateAllRegenerate,
+    confirmGenerateAllSkipExisting,
+    hideGenerateAllConfirm,
   };
 };

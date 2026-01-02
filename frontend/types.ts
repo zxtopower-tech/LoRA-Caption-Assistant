@@ -254,3 +254,31 @@ export interface MediaItemHistoryEntry {
   thumbnail_url?: string;      // Thumbnail URL for this version (only for original/preview)
   subtype: 'original' | 'caption' | 'preview';
 }
+
+/**
+ * Confirm mode constants for triple-choice modals
+ */
+export const CONFIRM_MODES = {
+  REGENERATE_ALL: 'regenerate-all',
+  SKIP_EXISTING: 'skip-existing',
+} as const;
+
+export type ConfirmMode = typeof CONFIRM_MODES[keyof typeof CONFIRM_MODES];
+
+/**
+ * Modal text constants for consistent UI
+ */
+export const CONFIRM_MODAL_TEXTS = {
+  CAPTION: {
+    title: 'Existing Captions Found',
+  },
+  BUTTONS: {
+    REGENERATE_ALL: 'Regenerate All',
+    SKIP_EXISTING: 'Skip Existing',
+    CANCEL: 'Cancel',
+  },
+  MESSAGE: {
+    WHAT_WOULD_YOU_DO: 'What would you like to do?',
+    SOME_HAVE_CAPTIONS: 'Some items already have captions.',
+  },
+} as const;

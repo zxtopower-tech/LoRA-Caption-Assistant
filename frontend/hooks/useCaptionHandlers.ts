@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import type { MediaFile, SegmentedAnalysisConfig } from '../types';
-import { GenerationStatus } from '../types';
+import type { MediaFile, SegmentedAnalysisConfig, ConfirmMode } from '../types';
+import { GenerationStatus, CONFIRM_MODES } from '../types';
 import { useToast } from './useToast';
 
 interface UseCaptionHandlersParams {
@@ -13,6 +13,7 @@ interface UseCaptionHandlersParams {
   _generateCaption: (id: string, customInstructions?: string) => Promise<void>;
   enqueueGenerateRequest: (id: string, customInstructions?: string) => void;
   enqueueSegmentedAnalysisRequest: (id: string) => void;
+  showGenerateAllConfirm?: (callback: (mode: ConfirmMode) => void) => void;
 }
 
 export const useCaptionHandlers = ({
@@ -25,6 +26,7 @@ export const useCaptionHandlers = ({
   _generateCaption,
   enqueueGenerateRequest,
   enqueueSegmentedAnalysisRequest,
+  showGenerateAllConfirm,
 }: UseCaptionHandlersParams) => {
   const { warning: toastWarning } = useToast();
 
@@ -61,13 +63,49 @@ export const useCaptionHandlers = ({
     }
   }, [segmentedAnalysisConfig.enabled, isQueueEnabled, enqueueSegmentedAnalysisRequest, _generateCaption, bulkGenerationInstructions, queueGenerate]);
 
-  const handleGenerateAll = useCallback(() => {
-    const hasAnyCaption = mediaFiles.some(mf => mf.caption.trim() !== '');
-    if (hasAnyCaption && !window.confirm('Some items already have captions. Continue generating captions for all unprocessed items?')) {
+  const handleGenerateAll = useCallback((mode?: ConfirmMode) => {
+    // If mode is provided, execute directly
+    if (mode) {
+      let filesToGenerate = mediaFiles.filter(mf =>
+        mf.status !== GenerationStatus.GENERATING && mf.status !== GenerationStatus.CHECKING
+      );
+      if (filesToGenerate.length === 0) return;
+
+      // Skip Existing mode: filter out items with captions
+      if (mode === CONFIRM_MODES.SKIP_EXISTING) {
+        filesToGenerate = filesToGenerate.filter(mf => !mf.caption.trim());
+      }
+
+      // Merge Bulk Instructions with Item Specific Instructions
+      const bulk = bulkGenerationInstructions.trim();
+
+      filesToGenerate.forEach(file => {
+          const item = file.customInstructions?.trim() || '';
+          let combined = item;
+          if (bulk) {
+              combined = item ? `${bulk}\n\n${item}` : bulk;
+          }
+
+          if (isQueueEnabled) {
+              queueGenerate(file.id, combined);
+          } else {
+              _generateCaption(file.id, combined);
+          }
+      });
       return;
     }
 
-    const filesToGenerate = mediaFiles.filter(mf =>
+    // No mode provided - check if confirmation is needed
+    const hasAnyCaption = mediaFiles.some(mf => mf.caption.trim() !== '');
+    if (hasAnyCaption && showGenerateAllConfirm) {
+      showGenerateAllConfirm((selectedMode) => {
+        handleGenerateAll(selectedMode);
+      });
+      return;
+    }
+
+    // No confirmation needed - proceed with all
+    let filesToGenerate = mediaFiles.filter(mf =>
       mf.status !== GenerationStatus.GENERATING && mf.status !== GenerationStatus.CHECKING
     );
     if (filesToGenerate.length === 0) return;
@@ -89,7 +127,7 @@ export const useCaptionHandlers = ({
         }
     });
 
-  }, [mediaFiles, bulkGenerationInstructions, isQueueEnabled, _generateCaption, queueGenerate]);
+  }, [mediaFiles, bulkGenerationInstructions, isQueueEnabled, _generateCaption, queueGenerate, showGenerateAllConfirm]);
 
   const handleGenerateSelected = useCallback(() => {
     const filesToGenerate = selectedFiles.filter(mf => mf.status === GenerationStatus.IDLE || mf.status === GenerationStatus.ERROR);

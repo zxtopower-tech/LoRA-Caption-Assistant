@@ -4,12 +4,21 @@ import { listWorkflows, uploadWorkflow, deleteWorkflow } from '../services/workf
 import type { WorkflowInfo } from '../types';
 import { useComfyPreview } from '../contexts/ComfyPreviewContext';
 import { useToast } from '../hooks/useToast';
+import ModalConfirm from './ModalConfirm';
 
 interface ComfyPreviewSettingsProps {
   serverUrl: string;
   onServerUrlChange: (url: string) => void;
   queueRunning?: number;
   queueRemaining?: number;
+}
+
+interface ConfirmModalState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  variant: 'danger' | 'warning' | 'info';
+  onConfirm: () => void;
 }
 
 export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
@@ -41,6 +50,7 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load workflows on mount and after upload/delete
@@ -80,12 +90,38 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
     // Check if file with same name exists
     const existingWorkflow = workflows.find(w => w.filename === file.name);
     if (existingWorkflow) {
-      const confirmed = window.confirm(
-        `A workflow named "${file.name}" already exists. Do you want to overwrite it?`
-      );
-      if (!confirmed) {
-        return;
-      }
+      setConfirmModal({
+        isOpen: true,
+        title: 'Overwrite Workflow',
+        message: `A workflow named "${file.name}" already exists. Do you want to overwrite it?`,
+        variant: 'warning',
+        onConfirm: async () => {
+          setIsUploading(true);
+          setError('');
+          setUploadSuccess(false);
+
+          try {
+            const result = await uploadWorkflow(file);
+
+            // Reload workflows
+            const workflowList = await listWorkflows();
+            setWorkflows(workflowList);
+
+            // Select the newly uploaded workflow (use sanitized filename from backend)
+            setWorkflowId(result.filename);
+
+            toastSuccess('Workflow uploaded successfully!');
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Failed to upload workflow';
+            setError(errorMsg);
+            toastError(`Failed to upload workflow: ${errorMsg}`);
+          } finally {
+            setIsUploading(false);
+            setConfirmModal(null);
+          }
+        },
+      });
+      return;
     }
 
     setIsUploading(true);
@@ -119,29 +155,34 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
   const handleDeleteWorkflow = async () => {
     if (!workflowId) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${workflowId}"?`
-    );
-    if (!confirmed) return;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Workflow',
+      message: `Are you sure you want to delete "${workflowId}"?`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setError('');
+        try {
+          await deleteWorkflow(workflowId);
 
-    setError('');
-    try {
-      await deleteWorkflow(workflowId);
+          // Reload workflows
+          const workflowList = await listWorkflows();
+          setWorkflows(workflowList);
 
-      // Reload workflows
-      const workflowList = await listWorkflows();
-      setWorkflows(workflowList);
-
-      // Clear selection
-      setWorkflowId('');
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to delete workflow';
-      setError(errorMsg);
-      toastError(`Failed to delete workflow: ${errorMsg}`);
-    }
+          // Clear selection
+          setWorkflowId('');
+          setConfirmModal(null);
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : 'Failed to delete workflow';
+          setError(errorMsg);
+          toastError(`Failed to delete workflow: ${errorMsg}`);
+        }
+      },
+    });
   };
 
   return (
+    <>
     <div className="space-y-4 p-4 rounded-lg border border-orange-900/30 bg-orange-900/10 animate-fade-in">
       <h3 className="text-lg font-semibold text-orange-300">ComfyUI Preview Settings</h3>
 
@@ -380,5 +421,19 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
         </div>
       )}
     </div>
+
+    {confirmModal && (
+      <ModalConfirm
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText="Confirm"
+        cancelText="Cancel"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+        variant={confirmModal.variant}
+      />
+    )}
+  </>
   );
 };
