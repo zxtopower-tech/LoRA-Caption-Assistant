@@ -2,12 +2,19 @@
 
 Backend service for LCTaz Custom, providing granular file management and version control for media projects.
 
-## Architecture (Manifest V2)
+## Architecture (Manifest V2.1 - ID-Based Storage)
 
-The backend uses a strict **Item-centric** architecture.
+The backend uses a strict **ID-centric storage** architecture to decouple logical naming from physical persistence.
+
 - **Item**: A logical grouping of files (Original, Caption, Preview) sharing a UUID.
-- **Manifest**: `manifest.json` is the single source of truth.
-- **Extension Replacement**: Validates that only one file exists per component type for an Item. If an extension changes (e.g., `.jpg` to `.png`), the old file is automatically deleted.
+- **Physical Storage**: Files are stored on disk using their **UUID** (e.g., `uuid.jbp`, `uuid.txt`).
+  - Original: `/projects/{id}/{item_id}.{ext}`
+  - Preview: `/projects/{id}/previews/{item_id}.{ext}`
+  - History: `/projects/{id}/.history/{item_id}/...`
+- **Metadata**: User-facing filenames (`base_name`) are stored ONLY in `manifest.json`.
+- **Migration**: Projects created with previous versions (Filename-based) are automatically migrated to ID-based storage on first load.
+- **Extension Replacement**: Validates that only one file exists per component type for an Item. If an extension changes (e.g., `.jpg` to `.png`), the old file is physically replaced.
+
 
 ## API Endpoints
 
@@ -61,6 +68,7 @@ The backend uses a strict **Item-centric** architecture.
 - **GET** `/api/projects/{id}/download`
     - Download project as a ZIP archive.
     - **Content**: Includes `manifest.json`, original media, captions, and previews.
+    - **Note**: Files inside the ZIP are renamed back to their original user-facing filenames (`base_name`) for portability.
 
 ### Project Items (Granular Management)
 - **GET** `/api/projects/{id}/items`
