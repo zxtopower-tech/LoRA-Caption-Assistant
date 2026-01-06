@@ -150,21 +150,25 @@ export const saveComfyPreview = async (
 };
 
 /**
- * Sync project manifest (reorder/rename)
+ * Sync project manifest (reorder/rename/delete)
  * POST /api/projects/{id}/manifest
  */
 export const syncProjectManifest = async (
   projectId: string,
-  files: { id: string; filename: string }[],
+  request: { files: { id: string; filename: string }[]; deleted_items?: string[] },
   signal?: AbortSignal
 ): Promise<void> => {
   const response = await fetch(buildProjectUrl(BASE_URL, `/api/projects/${encodeURIComponent(projectId)}/manifest`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files }),
+    body: JSON.stringify(request),
     signal,
   });
-  if (!response.ok) throw new Error(`Failed to sync manifest: ${response.statusText}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[ProjectService] Manifest Sync Failed:', errorText);
+    throw new Error(`Failed to sync manifest: ${response.statusText} - ${errorText}`);
+  }
 };
 
 // ===== File History Operations =====
@@ -402,6 +406,11 @@ export interface ProjectFileInfo {
   preview: PreviewInfo | null;
   caption: string;
   metadata?: Partial<MediaMetadata>;
+  // UUID-based URLs
+  files?: {
+    original?: string;
+    preview?: string;
+  };
 }
 
 /**
@@ -451,27 +460,27 @@ export const listProjectFiles = async (
       size: item.size || 0,
       preview: previewInfo,
       caption: item.caption_content || '',
-      metadata: item.metadata
+      metadata: item.metadata,
+      // UUID-based URL mapping
+      files: {
+        original: item.files?.original,
+        preview: item.files?.preview
+      }
     };
   });
 };
 
 /**
  * Download individual file as File object
- * GET /api/projects/{id}/files/{filename}
- */
-/**
- * Download individual file as File object
- * Use static URL construction.
+ * Uses UUID-based URL
  */
 export const downloadFile = async (
-  projectId: string,
-  filename: string, // actually we might need id if we wanted to be strict, but static files are by filename
+  fileUrl: string,  // UUID-based URL
+  filename: string,
   signal?: AbortSignal
 ): Promise<File> => {
-  const url = buildProjectUrl(BASE_URL, `/static/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(filename)}`);
   const response = await fetch(
-    url,
+    fileUrl,
     {
       method: 'GET',
       signal,
@@ -484,21 +493,16 @@ export const downloadFile = async (
 
 /**
  * Download preview file as File object
- * GET /api/projects/{id}/preview/{filename}
- */
-/**
- * Download preview file as File object
- * Use static URL construction.
+ * Uses UUID-based URL
  */
 export const downloadPreview = async (
-  projectId: string,
+  fileUrl: string,  // UUID-based URL
   filename: string,
   signal?: AbortSignal
 ): Promise<File | undefined> => {
   try {
-    const url = buildProjectUrl(BASE_URL, `/static/projects/${encodeURIComponent(projectId)}/previews/${encodeURIComponent(filename)}`);
     const response = await fetch(
-      url,
+      fileUrl,
       {
         method: 'GET',
         signal,

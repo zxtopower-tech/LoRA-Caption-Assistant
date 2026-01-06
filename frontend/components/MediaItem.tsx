@@ -143,7 +143,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
           <div className="grid grid-cols-2 gap-2">
             {/* Original image - always displayed */}<div className="relative rounded-md overflow-hidden max-w-full">
               {isVideo ? (
-                <video src={item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
+                <video src={item.files?.original || item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
               ) : (
                 <button
                   type="button"
@@ -151,7 +151,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
                   className="block w-full"
                   aria-label={`Open preview for ${item.name}`}
                 >
-                  <img src={item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
+                  <img src={item.files?.original || item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
                 </button>
               )}
               <span className="absolute bottom-0 left-0 text-xs text-gray-400 bg-black/50 px-1">Original</span>
@@ -190,7 +190,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
             {/* Original image */}
             <div className="relative rounded-md overflow-hidden max-w-full">
               {isVideo ? (
-                <video src={item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
+                <video src={item.files?.original || item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
               ) : (
                 <button
                   type="button"
@@ -198,7 +198,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
                   className="block w-full"
                   aria-label={`Open preview for ${item.name}`}
                 >
-                  <img src={item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
+                  <img src={item.files?.original || item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
                 </button>
               )}
               <span className="absolute bottom-0 left-0 text-xs text-gray-400 bg-black/50 px-1">Original</span>
@@ -225,7 +225,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
           // Before generation: Display original image only
           <div className="relative rounded-md overflow-hidden max-w-full">
             {isVideo ? (
-              <video src={item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
+              <video src={item.files?.original || item.originalUrl || item.previewUrl} controls className="w-full h-64 object-contain rounded-md bg-gray-900" />
             ) : (
               <button
                 type="button"
@@ -233,7 +233,7 @@ const MediaItem: React.FC<MediaItemProps> = ({
                 className="block w-full"
                 aria-label={`Open preview for ${item.name}`}
               >
-                <img src={item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
+                <img src={item.files?.original || item.originalUrl || item.previewUrl} alt={item.name} className="w-full h-64 object-contain rounded-md" />
               </button>
             )}
           </div>

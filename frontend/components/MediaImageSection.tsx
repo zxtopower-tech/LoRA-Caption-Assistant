@@ -26,13 +26,13 @@ export const MediaImageSection: React.FC<MediaImageSectionProps> = React.memo(({
           <div className="relative flex items-center justify-center rounded-md overflow-hidden min-h-0">
             {isVideo ? (
               <video
-                src={item.url || item.originalUrl}
+                src={item.files?.original || item.originalUrl}
                 controls
                 className="max-w-full max-h-full object-contain rounded-md"
               />
             ) : (
               <img
-                src={item.url || item.originalUrl}
+                src={item.files?.original || item.originalUrl}
                 alt="Original"
                 className="max-w-full max-h-full object-contain rounded-md"
               />
@@ -74,13 +74,13 @@ export const MediaImageSection: React.FC<MediaImageSectionProps> = React.memo(({
         <div className="relative flex items-center justify-center rounded-md overflow-hidden min-h-0 flex-1">
           {isVideo ? (
             <video
-              src={item.originalUrl || item.previewUrl}
+              src={item.files?.original || item.originalUrl || item.previewUrl}
               controls
               className="max-w-full max-h-full object-contain rounded-md"
             />
           ) : (
             <img
-              src={item.originalUrl || item.previewUrl}
+              src={item.files?.original || item.originalUrl || item.previewUrl}
               alt={item.name}
               className="max-w-full max-h-full object-contain rounded-lg"
             />

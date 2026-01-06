@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { MediaFile, QueueRequest } from '../types';
 import { useToast } from './useToast';
+import { useProjectContext } from '../contexts/ProjectContext';
 
 interface UseMediaHandlersParams {
   mediaFiles: MediaFile[];
@@ -24,6 +25,7 @@ export const useMediaHandlers = ({
   setRequestQueue,
 }: UseMediaHandlersParams) => {
   const { warning: toastWarning } = useToast();
+  const { setDeletedItemIds } = useProjectContext();
 
   const handleSelectAll = useCallback((isChecked: boolean) => {
     setMediaFiles(prev => prev.map(mf => ({ ...mf, isSelected: isChecked })));
@@ -110,13 +112,29 @@ export const useMediaHandlers = ({
   }, [selectedFiles, datasetPrefix]);
 
   const deleteSelected = useCallback(() => {
+    const deletedFiles = mediaFiles.filter(mf => mf.isSelected);
+    console.log('[deleteSelected] Deleting files:', deletedFiles.map(f => f.id));
     const newMediaFiles = mediaFiles.filter(mf => !mf.isSelected);
     setMediaFiles(newMediaFiles);
-  }, [mediaFiles, setMediaFiles]);
+    deletedFiles.forEach(mf => {
+      console.log('[deleteSelected] Adding to deletedItemIds:', mf.id);
+      setDeletedItemIds(prev => {
+        const newSet = new Set(prev).add(mf.id);
+        console.log('[deleteSelected] deletedItemIds after add:', Array.from(newSet));
+        return newSet;
+      });
+    });
+  }, [mediaFiles, setMediaFiles, setDeletedItemIds]);
 
   const deleteOne = useCallback((id: string) => {
+    console.log('[deleteOne] Deleting file:', id);
     setMediaFiles(prev => prev.filter(mf => mf.id !== id));
-  }, [setMediaFiles]);
+    setDeletedItemIds(prev => {
+      const newSet = new Set(prev).add(id);
+      console.log('[deleteOne] deletedItemIds after add:', Array.from(newSet));
+      return newSet;
+    });
+  }, [setMediaFiles, setDeletedItemIds]);
 
   return {
     handleSelectAll,

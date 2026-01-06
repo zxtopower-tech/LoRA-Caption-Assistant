@@ -84,6 +84,8 @@ const App: React.FC = () => {
     deleteProject,
     clearError: clearProjectError,
     saveProgress,
+    deletedItemIds,
+    setDeletedItemIds,
   } = useProjectContext();
 
   const currentProject = projects.find(p => p.id === selectedProjectId);

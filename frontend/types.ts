@@ -103,6 +103,11 @@ export interface MediaFile {
   previewFile?: File;
   originalUrl?: string; // Blob URL for original file (separate from previewUrl for ZIP uploads)
   previewUrl: string;
+  // UUID-based file URLs (provided by API response)
+  files?: {
+    original?: string;  // Original file UUID URL
+    preview?: string;   // Preview file UUID URL
+  };
   caption: string;       // Current caption value
   initialCaption: string; // Initial caption value for change detection
   status: GenerationStatus;

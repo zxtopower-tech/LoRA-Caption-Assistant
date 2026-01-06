@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { MediaFile } from '../types';
 import type { ProjectMetadata } from '../services/projectService';
 import { GenerationStatus } from '../types';
@@ -21,6 +21,7 @@ export interface ProjectContextValue {
   isDownloading: boolean;
   error: string;
   saveProgress: { isActive: boolean; progress: number; current: number; total: number };
+  deletedItemIds: Set<string>;
 
   // Actions
   loadProjectList: () => Promise<void>;
@@ -31,6 +32,7 @@ export interface ProjectContextValue {
   downloadProject: () => void;
   deleteProject: (projectId: string) => Promise<void>;
   clearError: () => void;
+  setDeletedItemIds: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -46,6 +48,13 @@ export const ProjectProvider: React.FC<{
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [saveProgress, setSaveProgress] = useState({ isActive: false, progress: 0, current: 0, total: 0 });
+  const [deletedItemIds, setDeletedItemIds] = useState<Set<string>>(new Set());
+  const deletedItemIdsRef = useRef(deletedItemIds);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    deletedItemIdsRef.current = deletedItemIds;
+  }, [deletedItemIds]);
 
   // Load project list on mount
   useEffect(() => {
@@ -158,6 +167,8 @@ export const ProjectProvider: React.FC<{
     datasetPrefix: string,
     projectName?: string
   ): Promise<Map<string, string>> => {
+    console.log('[saveProject] Start. deletedItemIds:', Array.from(deletedItemIdsRef.current));
+
     setIsSaving(true);
     setSaveProgress({ isActive: true, progress: 0, current: 0, total: mediaFiles.length });
     setError('');
@@ -291,8 +302,22 @@ export const ProjectProvider: React.FC<{
           .filter(f => uuidRegex.test(f.id))
           .map(f => ({ id: f.id, filename: f.filename }));
 
-        if (validSyncEntries.length > 0) {
-          await syncProjectManifest(projectId, validSyncEntries, new AbortController().signal);
+        // Filter deleted item IDs to only include backend IDs (not temp IDs)
+        const currentDeletedItemIds = deletedItemIdsRef.current;
+        const validDeletedItemIds = Array.from(currentDeletedItemIds).filter(id => uuidRegex.test(id));
+
+        console.log('[ProjectContext] syncProjectManifest request:', {
+          validSyncEntries,
+          validDeletedItemIds,
+          deletedItemIds: Array.from(currentDeletedItemIds)
+        });
+
+        if (validSyncEntries.length > 0 || validDeletedItemIds.length > 0) {
+          await syncProjectManifest(
+            projectId,
+            { files: validSyncEntries, deleted_items: validDeletedItemIds },
+            new AbortController().signal
+          );
         }
 
         // 2. Upload / Update Loop
@@ -352,6 +377,7 @@ export const ProjectProvider: React.FC<{
           await updateCaptions(projectId, changedCaptions, new AbortController().signal);
         }
 
+        setDeletedItemIds(new Set());
         await loadProjectList();
 
         // Return uploaded file IDs
@@ -393,13 +419,20 @@ export const ProjectProvider: React.FC<{
         const fileInfo = fileList[i];
 
         try {
-          const file = await downloadFile(targetProjectId, fileInfo.name, new AbortController().signal);
+          // Use UUID-based URL (provided by API)
+          const originalUrl = fileInfo.files?.original;
+          if (!originalUrl) {
+            console.error(`UUID URL not found for ${fileInfo.name}`);
+            continue;
+          }
+
+          const file = await downloadFile(originalUrl, fileInfo.name, new AbortController().signal);
 
           // Download preview if exists
           let previewFile: File | undefined = undefined;
           let previewUrl = '';
-          if (fileInfo.preview) {
-            previewFile = await downloadPreview(targetProjectId, fileInfo.preview.name, new AbortController().signal);
+          if (fileInfo.preview && fileInfo.files?.preview) {
+            previewFile = await downloadPreview(fileInfo.files.preview, fileInfo.preview.name, new AbortController().signal);
             if (previewFile) {
               previewUrl = URL.createObjectURL(previewFile);
             }
@@ -416,6 +449,7 @@ export const ProjectProvider: React.FC<{
             originalUrl: URL.createObjectURL(file),
             previewUrl: previewUrl || URL.createObjectURL(file),
             previewFile,
+            files: fileInfo.files,  // Store UUID-based URL
             caption: fileInfo.caption || '',
             initialCaption: fileInfo.caption || '',
             status: GenerationStatus.IDLE,
@@ -448,6 +482,7 @@ export const ProjectProvider: React.FC<{
 
   const selectProject = useCallback(async (projectId: string | null, onMediaFilesLoaded?: (mediaFiles: MediaFile[]) => void) => {
     setSelectedProjectId(projectId);
+    setDeletedItemIds(new Set());
 
     // Auto-load project when projectId is provided and onMediaFilesLoaded callback is given
     if (projectId && onMediaFilesLoaded) {
@@ -526,6 +561,7 @@ export const ProjectProvider: React.FC<{
       isDownloading,
       error,
       saveProgress,
+      deletedItemIds,
       loadProjectList,
       selectProject,
       createProject,
@@ -534,6 +570,7 @@ export const ProjectProvider: React.FC<{
       downloadProject,
       deleteProject,
       clearError,
+      setDeletedItemIds,
     }),
     [
       projects,
@@ -544,6 +581,7 @@ export const ProjectProvider: React.FC<{
       isDownloading,
       error,
       saveProgress,
+      deletedItemIds,
       loadProjectList,
       selectProject,
       createProject,
@@ -552,6 +590,7 @@ export const ProjectProvider: React.FC<{
       downloadProject,
       deleteProject,
       clearError,
+      setDeletedItemIds,
     ]
   );
 

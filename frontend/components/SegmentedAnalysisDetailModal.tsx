@@ -56,7 +56,7 @@ const SegmentedAnalysisDetailModal: React.FC<SegmentedAnalysisDetailModalProps> 
             return (
               <div key={file.id} className="bg-gray-900/50 rounded-lg p-4 space-y-3">
                 <div className="flex items-center gap-3">
-                  <img src={file.previewUrl} alt="" className="w-16 h-16 object-cover rounded" />
+                  <img src={file.files?.preview || file.previewUrl} alt="" className="w-16 h-16 object-cover rounded" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-300 truncate">{file.name}</p>
                     {sa.currentStep && (
