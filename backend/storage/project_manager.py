@@ -47,6 +47,15 @@ class ProjectManager:
     def _get_project_path(self, project_id: str) -> Path:
         return self.projects_dir / project_id
 
+    def _get_item_path(self, project_id: str, item_id: str, extension: str) -> Path:
+        """Get absolute path for an item's original file (UUID-based)."""
+        return self._get_project_path(project_id) / f"{item_id}{extension}"
+
+    def _get_preview_path(self, project_id: str, item_id: str, extension: str) -> Path:
+        """Get absolute path for an item's preview file (UUID-based)."""
+        return self._get_project_path(project_id) / "previews" / f"{item_id}{extension}"
+
+
     def _get_manifest_path(self, project_id: str) -> Path:
         return self._get_project_path(project_id) / "manifest.json"
 
@@ -96,28 +105,154 @@ class ProjectManager:
         await self.ensure_project_dir(project_id)
         manifest_path = self._get_manifest_path(project_id)
 
+    def _load_raw_manifest(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Helpers to load manifest without side effects."""
+        manifest_path = self._get_manifest_path(project_id)
+        if manifest_path.exists():
+            try:
+                with open(manifest_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if data.get("version") == 2 and "items" in data:
+                        return data
+            except json.JSONDecodeError:
+                logger.warning(f"Corrupt manifest for project {project_id}")
+        return None
+
+    async def ensure_manifest(self, project_id: str) -> Dict[str, Any]:
+        """
+        Ensure manifest.json exists with V2 structure.
+        """
+        await self.ensure_project_dir(project_id)
+        
         def _load():
-            if manifest_path.exists():
-                try:
-                    with open(manifest_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if data.get("version") == 2 and "items" in data:
-                            return data
-                except json.JSONDecodeError:
-                    logger.warning(f"Corrupt manifest for project {project_id}, creating new one.")
-            return None
+            return self._load_raw_manifest(project_id)
 
         data = await run_in_threadpool(_load)
+        data = await run_in_threadpool(_load)
         if data:
+            # Check for migration need
+            # If storage_format is not "id_v1", we trigger migration.
+            if data.get("storage_format") != "id_v1":
+                await self.migrate_project_structure(project_id)
+                # Reload after migration (to get updated manifest on disk)
+                # But migrate_project_structure modifies disk manifest.
+                # Let's just reload it.
+                data = await run_in_threadpool(_load)
             return data
 
         # Initialize V2 Manifest
         manifest = {
             "version": 2,
+            "storage_format": "id_v1",
             "items": []
         }
         await self._save_manifest(project_id, manifest)
         return manifest
+
+    async def migrate_project_structure(self, project_id: str):
+        """
+        Migrate a project from Filename-based (Legacy V2) to ID-based (V2.1).
+        This is idempotent and safe to re-run.
+        """
+        project_path = await self.ensure_project_dir(project_id)
+        # Avoid load_manifest loop: load raw directly
+        def _load():
+             return self._load_raw_manifest(project_id)
+        manifest = await run_in_threadpool(_load)
+        if not manifest:
+             # Should not happen if ensure_manifest called it, but safe guard
+             return
+        
+        previews_dir = project_path / "previews"
+        previews_dir.mkdir(exist_ok=True)
+        history_root = project_path / ".history"
+        
+        changed = False
+        
+        def _migrate_task():
+            nonlocal changed
+            for item in manifest["items"]:
+                item_id = item["id"]
+                base_name = item["base_name"]
+                extensions = item.get("extensions", {})
+                
+                # 1. Migrate Original File
+                if "original" in extensions:
+                    ext = extensions["original"]
+                    legacy_path = project_path / f"{base_name}{ext}"
+                    new_path = project_path / f"{item_id}{ext}"
+                    
+                    if legacy_path.exists() and not new_path.exists():
+                        legacy_path.replace(new_path)
+                        changed = True
+                        logger.info(f"Migrated original: {base_name} -> {item_id}")
+                    elif legacy_path.exists() and new_path.exists():
+                        # Conflict? Or maybe already copied?
+                        # If content same, delete legacy.
+                        # For safety, we assume new_path is the truth if it exists.
+                        # Check size?
+                        if legacy_path.stat().st_size == new_path.stat().st_size:
+                            legacy_path.unlink()
+                            changed = True
+                        else:
+                            logger.warning(f"Migration conflict for {base_name}: both files exist with different sizes.")
+
+                # 2. Migrate Caption
+                if "caption" in extensions:
+                    ext = extensions["caption"]
+                    legacy_path = project_path / f"{base_name}{ext}"
+                    new_path = project_path / f"{item_id}{ext}"
+                    
+                    if legacy_path.exists() and not new_path.exists():
+                        legacy_path.replace(new_path)
+                        changed = True
+                    elif legacy_path.exists() and new_path.exists():
+                         legacy_path.unlink() # Assume id-based is newer/correct
+
+                # 3. Migrate Preview
+                if "preview" in extensions:
+                    ext = extensions["preview"]
+                    legacy_path = previews_dir / f"{base_name}{ext}"
+                    new_path = previews_dir / f"{item_id}{ext}"
+                    
+                    if legacy_path.exists() and not new_path.exists():
+                        legacy_path.replace(new_path)
+                        changed = True
+                    elif legacy_path.exists() and new_path.exists():
+                        legacy_path.unlink()
+
+                # 4. Migrate History Directory
+                # Old: .history/{base_name}/...
+                # New: .history/{item_id}/...
+                if history_root.exists():
+                    legacy_hist_dir = history_root / base_name
+                    new_hist_dir = history_root / item_id
+                    
+                    if legacy_hist_dir.exists() and legacy_hist_dir.is_dir():
+                        if not new_hist_dir.exists():
+                            legacy_hist_dir.replace(new_hist_dir)
+                            changed = True
+                            logger.info(f"Migrated history: {base_name} -> {item_id}")
+                        else:
+                            # Merge? Or just ignore legacy if new exists?
+                            # Simplest: if new exists, maybe we already migrated.
+                            # But if legacy still there, maybe partial?
+                            # Let's try to move content? Too complex.
+                            # Just warn.
+                            pass
+
+        await run_in_threadpool(_migrate_task)
+        
+        # If we want to mark migration done, maybe update version in manifest?
+        # But for now, we just rely on file existence check.
+        # Mark migration as done by setting storage_format
+        # Even if no files changed (e.g. empty project), we mark it to avoid re-scan.
+        manifest["storage_format"] = "id_v1"
+        await self._save_manifest(project_id, manifest)
+        
+        if changed:
+            logger.info(f"Migration completed for project {project_id}")
+
 
     async def load_manifest(self, project_id: str) -> Dict[str, Any]:
         """Load manifest, ensuring it exists."""
@@ -203,7 +338,7 @@ class ProjectManager:
                 return thumb_path
             return None
 
-        # 2. Current Mode (Backward Compatibility)
+        # 2. Current Mode (Backward Compatibility & V2)
         manifest = await self.load_manifest(project_id)
         item = self._find_item_by_id(manifest["items"], item_id)
         
@@ -211,19 +346,34 @@ class ProjectManager:
             return None
             
         extensions = item["extensions"]
-        base_name = item["base_name"]
+        # base_name = item["base_name"] # Not used for paths anymore
         
         # Try to generate from Original
         if "original" in extensions:
-            source_path = project_path / f"{base_name}{extensions['original']}"
+            # V2: Use ID-based path
+            source_path = project_path / f"{item_id}{extensions['original']}"
             thumb_path = project_path / ".thumbnails" / f"{item_id}_original.webp"
+            
+            # Fallback for migration (if standard migration hasn't run yet? No, we mandate migration)
+            if not source_path.exists():
+                 # Try legacy name
+                 legacy_path = project_path / f"{item['base_name']}{extensions['original']}"
+                 if legacy_path.exists():
+                     source_path = legacy_path
+
             if await run_in_threadpool(self.thumbnail_manager.generate_thumbnail, source_path, thumb_path):
                 return thumb_path
                 
         # Fallback to Preview
         if "preview" in extensions:
             previews_dir = project_path / "previews"
-            source_path = previews_dir / f"{base_name}{extensions['preview']}"
+            source_path = previews_dir / f"{item_id}{extensions['preview']}"
+            
+            if not source_path.exists():
+                legacy_path = previews_dir / f"{item['base_name']}{extensions['preview']}"
+                if legacy_path.exists():
+                    source_path = legacy_path
+
             thumb_path = project_path / ".thumbnails" / f"{item_id}_preview.webp"
             if await run_in_threadpool(self.thumbnail_manager.generate_thumbnail, source_path, thumb_path):
                 return thumb_path
@@ -351,36 +501,42 @@ class ProjectManager:
                     if manifest_path.exists():
                         zf.write(manifest_path, arcname="manifest.json")
                     
-                    # 2. Add Project Files (from Manifest)
+                    # 2. Add Project Files (Restore Filenames)
                     for item in manifest["items"]:
+                        item_id = item["id"]
                         base_name = item["base_name"]
                         extensions = item.get("extensions", {})
                         
                         # Original
                         if "original" in extensions:
                             ext = extensions["original"]
-                            filename = f"{base_name}{ext}"
-                            file_path = project_path / filename
+                            # ID-based path
+                            file_path = project_path / f"{item_id}{ext}"
+                            # Restore name for archive
+                            archive_name = f"{base_name}{ext}"
+                            
                             if file_path.exists():
-                                zf.write(file_path, arcname=filename)
+                                zf.write(file_path, arcname=archive_name)
                             else:
-                                logger.warning(f"Archive: File missing {filename}")
+                                logger.warning(f"Archive: File missing {file_path}")
                                 
                         # Caption
                         if "caption" in extensions:
                             ext = extensions["caption"]
-                            filename = f"{base_name}{ext}"
-                            file_path = project_path / filename
+                            file_path = project_path / f"{item_id}{ext}"
+                            archive_name = f"{base_name}{ext}"
+                            
                             if file_path.exists():
-                                zf.write(file_path, arcname=filename)
+                                zf.write(file_path, arcname=archive_name)
                                 
                         # Preview (in previews/ subdir)
                         if "preview" in extensions:
                             ext = extensions["preview"]
-                            filename = f"{base_name}{ext}" 
-                            file_path = project_path / "previews" / filename
+                            file_path = project_path / "previews" / f"{item_id}{ext}"
+                            archive_name = f"previews/{base_name}{ext}"
+                            
                             if file_path.exists():
-                                zf.write(file_path, arcname=f"previews/{filename}")
+                                zf.write(file_path, arcname=archive_name)
                 
                 return zip_path
                 
@@ -411,9 +567,13 @@ class ProjectManager:
                  logger.info(f"Metadata update skipped: Item {item_id} has no original file")
                  return
                  
-            base_name = item["base_name"]
+            if "original" not in extensions:
+                 logger.info(f"Metadata update skipped: Item {item_id} has no original file")
+                 return
+                 
+            # base_name = item["base_name"]
             ext = extensions["original"]
-            file_path = project_path / f"{base_name}{ext}"
+            file_path = project_path / f"{item_id}{ext}"
             
             if not file_path.exists():
                 logger.warning(f"Metadata update skipped: File {file_path} not found")
@@ -447,6 +607,7 @@ class ProjectManager:
         items = manifest["items"]
 
         # Parse filename
+        # Parse filename to get Base Name
         base_name = os.path.splitext(filename)[0]
         ext = os.path.splitext(filename)[1] # includes dot
 
@@ -462,8 +623,8 @@ class ProjectManager:
             # EXTENSION REPLACEMENT CHECK
             old_ext = item["extensions"].get("original")
             if old_ext and old_ext != ext:
-                # Delete old file
-                old_filename = f"{base_name}{old_ext}"
+                # Delete old file (ID-based)
+                old_filename = f"{item_id}{old_ext}"
                 old_path = project_path / old_filename
                 
                 # Async unlink check
@@ -481,8 +642,8 @@ class ProjectManager:
         item["extensions"]["original"] = ext
         item["last_modified"] = datetime.now(timezone.utc).isoformat()
         
-        # Save file to disk
-        file_path = project_path / filename
+        # Save file to disk (UUID-based name)
+        file_path = project_path / f"{item_id}{ext}"
         
         def _write():
              with open(file_path, 'wb') as f:
@@ -525,7 +686,8 @@ class ProjectManager:
         async def _read_existing():
             content = ""
             if old_ext:
-                old_caption_path = project_path / f"{base_name}{old_ext}"
+                # ID-Based path
+                old_caption_path = project_path / f"{item['id']}{old_ext}"
                 if old_caption_path.exists():
                     try:
                         # use threadpool for read? yes technically IO
@@ -545,7 +707,7 @@ class ProjectManager:
         # Cleanup old if ext changed (unlikely for caption but for consistency)
         if old_ext and old_ext != ext:
              # Delete old caption file
-             old_cap_name = f"{base_name}{old_ext}"
+             old_cap_name = f"{item['id']}{old_ext}"
              old_path = project_path / old_cap_name
              
              def _unlink_old():
@@ -559,7 +721,7 @@ class ProjectManager:
         item["extensions"]["caption"] = ext
         item["last_modified"] = datetime.now(timezone.utc).isoformat()
         
-        caption_filename = f"{base_name}{ext}"
+        caption_filename = f"{item['id']}{ext}"
         file_path = project_path / caption_filename
 
         # Only write file and save manifest if content changed
@@ -597,7 +759,7 @@ class ProjectManager:
         # EXTENSION REPLACEMENT CHECK
         old_ext = item["extensions"].get("preview")
         if old_ext and old_ext != preview_extension:
-            old_preview_name = f"{base_name}{old_ext}"
+            old_preview_name = f"{item['id']}{old_ext}"
             old_path = previews_dir / old_preview_name
             
             def _unlink_old():
@@ -612,7 +774,7 @@ class ProjectManager:
         item["extensions"]["preview"] = preview_extension
         item["last_modified"] = datetime.now(timezone.utc).isoformat()
         
-        preview_filename = f"{base_name}{preview_extension}"
+        preview_filename = f"{item['id']}{preview_extension}"
         file_path = previews_dir / preview_filename
         
         def _write():
@@ -647,38 +809,12 @@ class ProjectManager:
         if old_base_name == new_base_name:
             return
 
-        # Check for collision
+        # Check for collision (Metadata only)
         if self._find_item_by_base_name(manifest["items"], new_base_name):
             raise ValueError(f"Item with name '{new_base_name}' already exists")
 
-        extensions = item["extensions"]
-        
-        def _rename():
-            # 1. Rename Original
-            if "original" in extensions:
-                ext = extensions["original"]
-                old_path = project_path / f"{old_base_name}{ext}"
-                new_path = project_path / f"{new_base_name}{ext}"
-                if old_path.exists():
-                    old_path.rename(new_path)
-                    
-            # 2. Rename Caption
-            if "caption" in extensions:
-                ext = extensions["caption"]
-                old_path = project_path / f"{old_base_name}{ext}"
-                new_path = project_path / f"{new_base_name}{ext}"
-                if old_path.exists():
-                    old_path.rename(new_path)
-                    
-            # 3. Rename Preview
-            if "preview" in extensions:
-                ext = extensions["preview"]
-                old_path = previews_dir / f"{old_base_name}{ext}"
-                new_path = previews_dir / f"{new_base_name}{ext}"
-                if old_path.exists():
-                    old_path.rename(new_path)
-
-        await run_in_threadpool(_rename)
+        # Rename: ONLY Metadata update!
+        # No disk IO for ID-based storage.
 
         # Update Manifest
         item["base_name"] = new_base_name
@@ -704,22 +840,31 @@ class ProjectManager:
         extensions = item["extensions"]
         
         def _delete():
-            # 1. Delete Files
+            # 1. Delete Files (UUID based)
             if "original" in extensions:
-                path = project_path / f"{base_name}{extensions['original']}"
+                path = project_path / f"{item_id}{extensions['original']}"
                 if path.exists():
                     path.unlink()
                     
             if "caption" in extensions:
-                path = project_path / f"{base_name}{extensions['caption']}"
+                path = project_path / f"{item_id}{extensions['caption']}"
                 if path.exists():
                     path.unlink()
                     
             if "preview" in extensions:
-                path = previews_dir / f"{base_name}{extensions['preview']}"
+                path = previews_dir / f"{item_id}{extensions['preview']}"
                 if path.exists():
                     path.unlink()
-                    
+            
+            # Delete Thumbnails
+            thumbnails_dir = project_path / ".thumbnails"
+            if thumbnails_dir.exists():
+                for thumb in thumbnails_dir.glob(f"{item_id}_*.webp"):
+                    try:
+                        thumb.unlink()
+                    except OSError:
+                        pass
+                        
         await run_in_threadpool(_delete)
 
         # 2. Delete History
@@ -729,22 +874,96 @@ class ProjectManager:
         manifest["items"] = [i for i in manifest["items"] if i["id"] != item_id]
         await self._save_manifest(project_id, manifest)
 
-    async def sync_items(self, project_id: str, sync_files: List[Dict[str, str]]):
+    async def sync_items(self, project_id: str, sync_files: List[Dict[str, str]], deleted_items: List[str] = None, force: bool = False):
         """
-        Sync manifest with new order and file names.
+        Sync manifest with new order, file names, and deletions.
         """
+        if deleted_items is None:
+            deleted_items = []
+
         project_path = await self.ensure_project_dir(project_id)
         previews_dir = project_path / "previews"
         manifest = await self.load_manifest(project_id)
         
         current_items = {item["id"]: item for item in manifest["items"]}
+        current_ids = set(current_items.keys())
+        
+        sync_ids = set(f["id"] for f in sync_files)
+        # Handle None for deleted_items
+        deleted_ids_set = set(deleted_items) if deleted_items else set()
         
         # 1. Validation (Integrity Check)
-        sync_ids = set(f["id"] for f in sync_files)
-        if sync_ids != set(current_items.keys()):
-            raise ValueError("Inventory mismatch: Sync list must match existing items exactly.")
+        
+        # 1.1 Overlap Check (Strict even with force)
+        if not sync_ids.isdisjoint(deleted_ids_set):
+            raise ValueError(f"Overlap detected: Items cannot be in both 'files' and 'deleted_items'. Intersection: {sync_ids & deleted_ids_set}")
             
-        # 2. Analyze Renames and Check Collisions
+        request_total_ids = sync_ids | deleted_ids_set
+        
+        unknown_ids = request_total_ids - current_ids
+        missing_ids = current_ids - request_total_ids
+        
+        if force:
+            # Force Sync Logic
+            
+            # A. Handle Unknown IDs (Ignore them)
+            if unknown_ids:
+                logger.warning(f"Force Sync (Project {project_id}): Ignoring unknown IDs: {unknown_ids}")
+                sync_files[:] = [f for f in sync_files if f["id"] in current_ids]
+                if deleted_items:
+                    deleted_items[:] = [d for d in deleted_items if d in current_ids]
+
+            # B. Handle Missing IDs (Implicit Delete)
+            if missing_ids:
+                logger.warning(f"Force Sync (Project {project_id}): Auto-deleting missing IDs: {missing_ids}")
+                if deleted_items is None:
+                    deleted_items = []
+                deleted_items.extend(list(missing_ids))
+        
+        else:
+            # Strict Logic (Default)
+            
+            # 1.2 Unknown ID Check
+            if unknown_ids:
+                 raise ValueError(f"Inventory mismatch: Request contains unknown items: {unknown_ids}")
+
+            # 1.3 Partial Mismatch Check
+            if missing_ids:
+                 raise ValueError(f"Inventory mismatch: Request missing items (must be in files or deleted_items): {missing_ids}")
+
+        # 2. Process Deletions
+        # execute deletion before renaming to avoid conflicts? 
+        # Actually it's safer to delete first.
+
+        # However, delete_item modifies manifest in memory and saves it. 
+        # But we modify manifest here later for reordering.
+        # If we call self.delete_item, it will reload manifest or modify it. 
+        # self.delete_item saves manifest.
+        # We should probably do deletion logic manually here to verify transaction *before* saving manifest?
+        # But `delete_item` handles file cleanup.
+        # Let's call self.delete_item sequentially. 
+        # Note: self.delete_item updates manifest on disk. 
+        # This might cause race condition if we hold `manifest` in memory here?
+        # `manifest` variable here is just a dict.
+        # If we call delete_item, it reads/writes manifest.
+        # If we then proceed to use `manifest` (the variable), it is stale!
+        # We should NOT use `manifest` variable after calling `delete_item` without reloading.
+        # OR: We manipulate `manifest` variable here and do file deletion manually, then save once.
+        # `delete_item` helper on disk:
+        
+        # Strategy: 
+        # A. Call delete_item for each. Then RELOAD manifest for the rename/reorder phase.
+        
+        if deleted_items:
+            for item_id in deleted_items:
+                await self.delete_item(project_id, item_id)
+            
+            # RELOAD Manifest because delete_item modified it
+            manifest = await self.load_manifest(project_id)
+            current_items = {item["id"]: item for item in manifest["items"]}
+            # Note: current_items now only contains surviving items.
+            
+        # 3. Analyze Renames and Check Collisions (on surviving items)
         renames = [] # List of (item_id, old_base, new_base)
         proposed_base_names = set()
         
@@ -764,7 +983,7 @@ class ProjectManager:
             if item["base_name"] != new_base:
                 renames.append((item_id, item["base_name"], new_base))
 
-        # 3. Execute Renames (Safe Shuffle via Temporary Names)
+        # 4. Execute Renames (Safe Shuffle via Temporary Names)
         if renames:
             # Phase 1: Rename all targets to temporary UUID-based names
             temp_map = {} # item_id -> temp_base_name
@@ -786,7 +1005,7 @@ class ProjectManager:
                 item["base_name"] = new_base # Final update
                 item["last_modified"] = datetime.now(timezone.utc).isoformat()
 
-        # 4. Reconstruct Manifest (Apply Order)
+        # 5. Reconstruct Manifest (Apply Order)
         new_items_list = []
         for entry in sync_files:
             item = current_items[entry["id"]]

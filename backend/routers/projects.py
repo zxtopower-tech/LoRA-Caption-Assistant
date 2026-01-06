@@ -56,6 +56,7 @@ class ManifestEntry(BaseModel):
 
 class ManifestSyncRequest(BaseModel):
     files: List[ManifestEntry]
+    deleted_items: List[str] = []
 
 class ItemResponse(BaseModel):
     id: str
@@ -121,7 +122,9 @@ async def list_items(project_id: str):
         
         # 1. URLs
         for role, ext in item["extensions"].items():
-            filename = f"{base_name}{ext}"
+            # ID-based filename
+            filename = f"{item_id}{ext}"
+            
             if role == "preview":
                  files[role] = f"/static/projects/{project_id}/previews/{filename}"
             else:
@@ -277,7 +280,7 @@ async def sync_project_manifest(project_id: str, request: ManifestSyncRequest):
     # Use queue to ensure atomic access to manifest
     async def _sync():
         try:
-            await project_manager.sync_items(project_id, file_list)
+            await project_manager.sync_items(project_id, file_list, deleted_items=request.deleted_items)
             return {"status": "synced"}
         except ValueError as e:
             # ID missing or conflict
