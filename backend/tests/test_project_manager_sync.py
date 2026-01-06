@@ -109,9 +109,13 @@ class TestManifestSync:
         renamed_item = next(i for i in manifest["items"] if i["id"] == target_id)
         assert renamed_item["base_name"] == "photo_one"
         
-        # Verify Disk
+        # Verify Disk (ID based)
         p_dir = roots / pid
-        assert (p_dir / "photo_one.jpg").exists()
+        # File should exist at {uuid}.jpg
+        assert (p_dir / f"{target_id}.jpg").exists()
+        
+        # Logical filenames should NOT exist
+        assert not (p_dir / "photo_one.jpg").exists()
         assert not (p_dir / "image01.jpg").exists()
 
     async def test_sync_mixed_reorder_and_rename(self, temp_v2_env, setup_items):
@@ -146,10 +150,17 @@ class TestManifestSync:
         assert manifest["items"][0]["base_name"] == "b_moved"
         assert manifest["items"][2]["base_name"] == "a_moved"
         
-        # Check Disk
+        # Check Disk (UUIDs)
         p_dir = roots / pid
-        assert (p_dir / "b_moved.png").exists()
-        assert (p_dir / "a_moved.jpg").exists()
+        id_b = item_map["image02"]["id"]
+        id_a = item_map["image01"]["id"]
+        
+        assert (p_dir / f"{id_b}.png").exists()
+        assert (p_dir / f"{id_a}.jpg").exists()
+        
+        # Ensure new logical names didn't create files
+        assert not (p_dir / "b_moved.png").exists()
+        assert not (p_dir / "a_moved.jpg").exists()
 
     async def test_sync_integrity_fails_on_missing_item(self, temp_v2_env, setup_items):
         """
@@ -207,6 +218,11 @@ class TestManifestSync:
         with pytest.raises(ValueError, match="Duplicate filename"):
             await mgr.sync_items(pid, sync_list)
             
-        # Verify Rollback (No change)
+        # Verify Rollback (No change in Manifest)
+        manifest = await mgr.load_manifest(pid)
+        item_a = next(i for i in manifest["items"] if i["id"] == item_map["image01"]["id"])
+        assert item_a["base_name"] == "image01"
+        
+        # Disk check (UUID matches)
         p_dir = roots / pid
-        assert (p_dir / "image01.jpg").exists()
+        assert (p_dir / f"{item_map['image01']['id']}.jpg").exists()

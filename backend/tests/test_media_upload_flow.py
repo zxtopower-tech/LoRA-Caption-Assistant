@@ -88,9 +88,9 @@ async def test_upload_flow_v2_full(temp_env, client):
     resp = client.post(f"/api/projects/{project_id}/items/{item_id}/caption", data=caption_data)
     assert resp.status_code == 200, resp.text
     
-    # Verify Caption on disk
+    # Verify Caption on disk (ID-based)
     project_root = pm.get_project_root(project_id)
-    assert (project_root / "scene_01.txt").read_text() == "A nice sunset"
+    assert (project_root / f"{item_id}.txt").read_text() == "A nice sunset"
     
     # Verify metadata
     item = await pm.get_item(project_id, item_id)
@@ -102,8 +102,8 @@ async def test_upload_flow_v2_full(temp_env, client):
     resp = client.post(f"/api/projects/{project_id}/items/{item_id}/preview", files=preview_file)
     assert resp.status_code == 200, resp.text
     
-    # Verify Preview on disk
-    assert (project_root / "previews" / "scene_01.png").read_bytes() == b"preview_png_data"
+    # Verify Preview on disk (ID-based)
+    assert (project_root / "previews" / f"{item_id}.png").read_bytes() == b"preview_png_data"
     
     # Verify metadata
     item = await pm.get_item(project_id, item_id)
@@ -132,6 +132,6 @@ async def test_upload_duplicate_rename(temp_env, client):
     item2 = items[0]
     assert item2["id"] == id1, "ID should persist on update"
     
-    # Verify content changed
+    # Verify content changed (ID-based)
     root = pm.get_project_root(project_id)
-    assert (root / "MyChar.webp").read_bytes() == b"v2"
+    assert (root / f"{id1}.webp").read_bytes() == b"v2"

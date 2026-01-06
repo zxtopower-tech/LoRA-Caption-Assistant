@@ -89,7 +89,7 @@ async def test_list_items_metadata_v2(temp_env, client):
     assert "caption" not in i1["extensions"]
     assert "preview" not in i1["extensions"]
     assert "original" in i1["files"]
-    assert i1["files"]["original"].endswith("image01.jpg")
+    assert i1["files"]["original"].endswith(f"{i1['id']}.jpg")
     assert i1["thumbnail_url"].endswith(f"/thumbnails/{i1['id']}")
     
     # Check Item 2
@@ -97,14 +97,14 @@ async def test_list_items_metadata_v2(temp_env, client):
     assert i2["extensions"]["original"] == ".png"
     assert i2["extensions"]["caption"] == ".txt"
     assert "caption" in i2["files"]
-    assert i2["files"]["caption"].endswith("image02.txt")
+    assert i2["files"]["caption"].endswith(f"{i2['id']}.txt")
     
     # Check Item 3
     i3 = items_map["video01"]
     assert i3["extensions"]["original"] == ".mp4"
     assert i3["extensions"]["preview"] == ".png"
     assert "preview" in i3["files"]
-    assert i3["files"]["preview"].endswith("video01.png")
+    assert i3["files"]["preview"].endswith(f"{i3['id']}.png")
     
 def test_list_items_project_not_found(temp_env, client):
     resp = client.get("/api/projects/non-existent/items")

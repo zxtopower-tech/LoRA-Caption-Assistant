@@ -44,7 +44,7 @@ async def test_caption_update_referencing_media_filename(temp_v2_env):
     # Verify file
     project_root = pm.get_project_root(project_id) # get_project_root is likely sync (path op)
     # Check if get_project_root is async? Viewed it before: it is sync.
-    assert (project_root / "image01.txt").read_text() == "caption content"
+    assert (project_root / f"{item['id']}.txt").read_text() == "caption content"
     
     # Verify Manifest
     item = await pm.get_item(project_id, item["id"])
@@ -70,7 +70,7 @@ async def test_caption_update_referencing_txt_filename(temp_v2_env):
     
     # Verify file
     project_root = pm.get_project_root(project_id)
-    assert (project_root / "image02.txt").read_text() == "caption content 2"
+    assert (project_root / f"{item['id']}.txt").read_text() == "caption content 2"
     
     # Verify Manifest
     item = await pm.get_item(project_id, item["id"])

@@ -78,10 +78,14 @@ class TestProjectManagerV2:
         assert item["extensions"]["original"] == ".jpg"
         assert "id" in item
         
-        # Verify Disk
+        # Verify Disk (ID-based)
         project_dir = root_dir / project_id
-        assert (project_dir / filename).exists()
-        assert (project_dir / filename).read_bytes() == content
+        item_id = item["id"]
+        assert (project_dir / f"{item_id}.jpg").exists()
+        assert (project_dir / f"{item_id}.jpg").read_bytes() == content
+        
+        # Verify NO legacy filename exists
+        assert not (project_dir / filename).exists()
 
     async def test_add_caption_to_existing_item(self, temp_v2_env, project_id):
         """
@@ -120,9 +124,13 @@ class TestProjectManagerV2:
         
         assert item["extensions"]["preview"] == ".png"
         
-        # Check disk
-        preview_path = root_dir / project_id / "previews" / "image01.png"
+        # Check disk (ID-based)
+        item_id = item["id"]
+        preview_path = root_dir / project_id / "previews" / f"{item_id}.png"
         assert preview_path.exists()
+        
+        # Verify NO legacy filename
+        assert not (root_dir / project_id / "previews" / "image01.png").exists()
 
     async def test_rename_item_updates_all_files(self, temp_v2_env, project_id):
         """
@@ -148,10 +156,14 @@ class TestProjectManagerV2:
         assert item["id"] == original_id
         
         p_dir = root_dir / project_id
+        
+        # ID-based file should still exist with SAME name (UUID)
+        assert (p_dir / f"{original_id}.jpg").exists()
+        assert (p_dir / f"{original_id}.txt").exists()
+        
+        # Verify NO legacy filenames exist (neither old nor new base_name)
         assert not (p_dir / "image01.jpg").exists()
-        assert (p_dir / "vacation.jpg").exists()
-        assert not (p_dir / "image01.txt").exists()
-        assert (p_dir / "vacation.txt").exists()
+        assert not (p_dir / "vacation.jpg").exists()
 
     async def test_delete_item_removes_all_files(self, temp_v2_env, project_id):
         """
@@ -174,9 +186,14 @@ class TestProjectManagerV2:
         assert len(manifest["items"]) == 0
         
         p_dir = root_dir / project_id
+        
+        # Verify files are gone (checking UUID paths)
+        assert not (p_dir / f"{item_id}.jpg").exists()
+        assert not (p_dir / f"{item_id}.txt").exists()
+        assert not (p_dir / "previews" / f"{item_id}.png").exists()
+        
+        # Verify legacy paths are definitely not there
         assert not (p_dir / "image01.jpg").exists()
-        assert not (p_dir / "image01.txt").exists()
-        assert not (p_dir / "previews" / "image01.png").exists()
 
     async def test_replace_extension_cleanup(self, temp_v2_env, project_id):
         """
@@ -196,8 +213,13 @@ class TestProjectManagerV2:
         await mgr.save_preview_for_media(project_id, "image01.jpg", b"preview_content", preview_extension=".png")
         
         # Verify setup
-        assert (p_dir / "image01.jpg").exists()
-        assert (p_dir / "image01.txt").exists()
+        # Verify setup
+        # Get ID
+        manifest = await mgr.load_manifest(project_id)
+        item_id = manifest["items"][0]["id"]
+        
+        assert (p_dir / f"{item_id}.jpg").exists()
+        assert (p_dir / f"{item_id}.txt").exists()
         
         # 2. Replace with PNG (Same base_name 'image01')
         await mgr.save_media_file(project_id, "image01.png", b"png_content", subtype="original")
@@ -210,7 +232,7 @@ class TestProjectManagerV2:
         assert item["extensions"]["caption"] == ".txt" # Preserved
         assert item["extensions"]["preview"] == ".png" # Preserved
         
-        assert not (p_dir / "image01.jpg").exists(), "Old JPG should be deleted"
-        assert (p_dir / "image01.png").exists(), "New PNG should exist"
-        assert (p_dir / "image01.txt").exists(), "Caption should remain"
-        assert (p_dir / "previews" / "image01.png").exists(), "Preview should remain"
+        assert not (p_dir / f"{item_id}.jpg").exists(), "Old JPG should be deleted (physically)"
+        assert (p_dir / f"{item_id}.png").exists(), "New PNG should exist (physically)"
+        assert (p_dir / f"{item_id}.txt").exists(), "Caption should remain"
+        assert (p_dir / "previews" / f"{item_id}.png").exists(), "Preview should remain"

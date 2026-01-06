@@ -110,7 +110,7 @@ async def test_download_project_zip_missing_files(client, temp_project_manager, 
     # Create item then delete file
     item_id = await temp_project_manager.save_media_file(project_id, "ghost.jpg", b"boo")
     project_path = temp_project_manager.get_project_root(project_id)
-    (project_path / "ghost.jpg").unlink() # Delete maliciously
+    (project_path / f"{item_id}.jpg").unlink() # Delete maliciously
     
     response = client.get(f"/api/projects/{project_id}/download")
     
