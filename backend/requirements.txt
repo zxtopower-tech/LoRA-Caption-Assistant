@@ -3,3 +3,7 @@ uvicorn==0.30.6
 python-multipart==0.0.9
 static-ffmpeg==2.7
 Pillow
+httpx>=0.25.0
+packaging>=23.0
+async-lru>=2.0.0
+aiofiles>=23.0.0

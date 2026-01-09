@@ -40,6 +40,14 @@ class AppConfig:
         self.api_token = os.getenv("PROFILE_API_TOKEN", "")
         self.cors_origins = self._parse_cors_origins(os.getenv("CORS_ORIGINS", "*"))
 
+        # Root directory (Parent of backend)
+        self.root_dir = self.backend_dir.parent
+        self.version_file = self.root_dir / "VERSION"
+
+        # GitHub Update Settings
+        self.github_repo_url = "https://github.com/zxtopower-tech/LoRA-Caption-Assistant"
+        self.github_api_url = "https://api.github.com/repos/zxtopower-tech/LoRA-Caption-Assistant/releases/latest"
+
     def _get_path(self, env_var: str, default: Path) -> Path:
         """Get path from environment variable or use default.
 
