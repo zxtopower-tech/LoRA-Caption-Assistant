@@ -21,6 +21,19 @@ The backend uses a strict **ID-centric storage** architecture to decouple logica
 ### System & Utilities
 - **GET** `/healthz`
     - Health check. Returns `{"status": "ok"}`.
+- **GET** `/api/system/version`
+    - Check for application updates.
+    - **Header**: None (Public)
+    - **Response**:
+        ```json
+        {
+          "current_version": "0.0.1",
+          "latest_version": "0.0.2",
+          "has_update": true,
+          "repo_url": "https://github.com/...",
+          "release_notes": "..."
+        }
+        ```
 - **POST** `/api/media/metadata`
     - Probe media file metadata.
     - **Header**: None (Public)
