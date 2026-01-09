@@ -277,6 +277,9 @@ app.add_middleware(
 from routers.projects import router as projects_router
 app.include_router(projects_router)
 
+from routers.system import router as system_router
+app.include_router(system_router)
+
 # Mount static files for direct project file access
 # This allows serving images/videos without authentication
 # Project IDs are UUIDs, making them hard to guess

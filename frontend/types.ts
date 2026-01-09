@@ -1,4 +1,6 @@
 
+export type EndpointStatus = 'idle' | 'checking' | 'success' | 'error';
+
 export enum GenerationStatus {
   IDLE = 'idle',
   GENERATING = 'generating',
@@ -287,3 +289,14 @@ export const CONFIRM_MODAL_TEXTS = {
     SOME_HAVE_CAPTIONS: 'Some items already have captions.',
   },
 } as const;
+
+// === System Version Types ===
+
+export interface SystemVersion {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  repo_url: string;
+  release_notes: string;
+  error?: string;
+}
