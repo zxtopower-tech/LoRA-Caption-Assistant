@@ -15,3 +15,4 @@ export { default as GlobalDragOverlay } from './GlobalDragOverlay';
 export { default as SegmentedAnalysisDetailModal } from './SegmentedAnalysisDetailModal';
 export { ToastContainer } from './Toast';
 export { ScreenWidthIndicator } from './ScreenWidthIndicator';
+export { VersionIndicator } from './VersionIndicator';

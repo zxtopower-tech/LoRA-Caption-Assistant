@@ -59,6 +59,7 @@ import {
   GenericProgressBar,
   GlobalDragOverlay,
   ToastContainer,
+  VersionIndicator,
 } from './components';
 
 // FIX: Imported `GenerateContentResponse` to correctly type the Gemini API response.
@@ -697,8 +698,16 @@ const App: React.FC = () => {
         {...dragHandlers}
       >
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white tracking-tight">LoRA Caption Assistant</h1>
-          <p className="mt-2 text-lg text-gray-400">Generate high-quality captions for your training data.</p>
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex-grow" />
+            <div className="flex-grow">
+              <h1 className="text-4xl font-bold text-white tracking-tight">LoRA Caption Assistant</h1>
+              <p className="mt-2 text-lg text-gray-400">Generate high-quality captions for your training data.</p>
+            </div>
+            <div className="flex-grow flex justify-end items-start">
+              <VersionIndicator />
+            </div>
+          </div>
         </header>
 
         <main className="space-y-8">
