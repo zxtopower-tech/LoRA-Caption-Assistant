@@ -1,6 +1,9 @@
-import React from 'react';
-import type { ApiProvider } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { ApiProvider, EndpointStatus } from '../types';
 import { TrashIcon, WandIcon, Spinner } from './Icons';
+import SearchableSelect, { SelectOption } from './SearchableSelect';
+import EndpointStatusIndicator from './EndpointStatusIndicator';
+import { fetchOpenAIModels, checkEndpointStatus } from '../services/openaiCompatibleService';
 
 interface GeminiSettingsProps {
   envApiKey: string;
@@ -147,80 +150,122 @@ const OpenAICompatibleSettings: React.FC<OpenAICompatibleSettingsProps> = ({
   openaiCompatibleVideoFrameCount,
   onOpenAICompatibleVideoFrameCountChange,
   isHttps,
-}) => (
-  <div className="space-y-3 animate-fade-in">
-    <div>
-      <label className="block text-sm font-medium text-gray-300 mb-1">
-        Endpoint {isHttps ? '(Tunnel URL)' : ''}
-      </label>
-      <div className="flex gap-2">
+}) => {
+  const [endpointStatus, setEndpointStatus] = useState<EndpointStatus>('idle');
+  const [availableModels, setAvailableModels] = useState<SelectOption[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  // Check endpoint status when endpoint or API key changes
+  useEffect(() => {
+    if (!openaiCompatibleEndpoint) {
+      setEndpointStatus('idle');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setEndpointStatus('checking');
+      const status = await checkEndpointStatus(openaiCompatibleEndpoint, openaiCompatibleApiKey);
+      setEndpointStatus(status);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [openaiCompatibleEndpoint, openaiCompatibleApiKey]);
+
+  // Fetch models when endpoint is successful and API key is available
+  useEffect(() => {
+    if (endpointStatus !== 'success' || !openaiCompatibleEndpoint) {
+      setAvailableModels([]);
+      return;
+    }
+
+    const fetchModels = async () => {
+      setIsLoadingModels(true);
+      try {
+        const models = await fetchOpenAIModels(openaiCompatibleEndpoint, openaiCompatibleApiKey);
+        const options: SelectOption[] = models.map(model => ({
+          id: model.id,
+          name: model.id,
+        }));
+        setAvailableModels(options);
+      } catch (error) {
+        console.error('Failed to fetch models:', error);
+        setAvailableModels([]);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchModels();
+  }, [endpointStatus, openaiCompatibleEndpoint, openaiCompatibleApiKey]);
+
+  return (
+    <div className="space-y-3 animate-fade-in">
+      <div>
+        <label className="block text-sm font-medium text-gray-300 mb-1">
+          Endpoint {isHttps ? '(Tunnel URL)' : ''}
+        </label>
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={openaiCompatibleEndpoint}
+            onChange={(e) => onOpenAICompatibleEndpointChange(e.target.value)}
+            placeholder={isHttps ? 'https://....trycloudflare.com/v1' : 'http://localhost:8000/v1'}
+            className="flex-grow p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+          />
+          <EndpointStatusIndicator status={endpointStatus} size="sm" />
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="openai-compatible-model" className="block text-sm font-medium text-gray-300 mb-1">
+          Model ID
+        </label>
+        <SearchableSelect
+          options={availableModels}
+          selectedId={openaiCompatibleModel || null}
+          onChange={(value) => onOpenAICompatibleModelChange(value || '')}
+          placeholder="e.g. Qwen/Qwen2.5-VL-7B-Instruct"
+          loading={isLoadingModels}
+          allowCustomInput={true}
+          showStatusIndicator={false}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="openai-compatible-api-key" className="block text-sm font-medium text-gray-300 mb-1">
+          API Key
+        </label>
         <input
-          type="text"
-          value={openaiCompatibleEndpoint}
-          onChange={(e) => onOpenAICompatibleEndpointChange(e.target.value)}
-          placeholder={isHttps ? 'https://....trycloudflare.com/v1' : 'http://localhost:8000/v1'}
+          id="openai-compatible-api-key"
+          type="password"
+          value={openaiCompatibleApiKey}
+          onChange={(e) => onOpenAICompatibleApiKeyChange(e.target.value)}
+          placeholder="Optional for hosted endpoints"
           className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
         />
-        {!isHttps && (
-          <button
-            onClick={() => onOpenAICompatibleEndpointChange('http://localhost:8000/v1')}
-            className="px-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-xs"
-            title="Reset to localhost"
-          >
-            Reset
-          </button>
-        )}
+      </div>
+
+      <div className="pt-2 border-t border-gray-700">
+        <label className="block text-sm font-medium text-gray-300 mb-1">
+          Video Frame Sampling
+        </label>
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min="1"
+            max="32"
+            step="1"
+            value={openaiCompatibleVideoFrameCount}
+            onChange={(e) => onOpenAICompatibleVideoFrameCountChange(parseInt(e.target.value, 10))}
+            className="flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+          />
+          <span className="text-sm text-gray-400 w-12 text-right">{openaiCompatibleVideoFrameCount} f</span>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">Number of frames to extract and send to the API for video files.</p>
       </div>
     </div>
-
-    <div>
-      <label htmlFor="openai-compatible-model" className="block text-sm font-medium text-gray-300 mb-1">
-        Model ID
-      </label>
-      <input
-        id="openai-compatible-model"
-        type="text"
-        value={openaiCompatibleModel}
-        onChange={(e) => onOpenAICompatibleModelChange(e.target.value)}
-        placeholder="e.g. Qwen/Qwen2.5-VL-7B-Instruct"
-        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-      />
-    </div>
-
-    <div>
-      <label htmlFor="openai-compatible-api-key" className="block text-sm font-medium text-gray-300 mb-1">
-        API Key
-      </label>
-      <input
-        id="openai-compatible-api-key"
-        type="password"
-        value={openaiCompatibleApiKey}
-        onChange={(e) => onOpenAICompatibleApiKeyChange(e.target.value)}
-        placeholder="Optional for hosted endpoints"
-        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-      />
-    </div>
-
-    <div className="pt-2 border-t border-gray-700">
-      <label className="block text-sm font-medium text-gray-300 mb-1">
-        Video Frame Sampling
-      </label>
-      <div className="flex items-center gap-3">
-        <input
-          type="range"
-          min="1"
-          max="32"
-          step="1"
-          value={openaiCompatibleVideoFrameCount}
-          onChange={(e) => onOpenAICompatibleVideoFrameCountChange(parseInt(e.target.value, 10))}
-          className="flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-        />
-        <span className="text-sm text-gray-400 w-12 text-right">{openaiCompatibleVideoFrameCount} f</span>
-      </div>
-      <p className="text-xs text-gray-500 mt-1">Number of frames to extract and send to the API for video files.</p>
-    </div>
-  </div>
-);
+  );
+};
 
 const GeneralSettings: React.FC<GeneralSettingsProps> = ({
   triggerWord,

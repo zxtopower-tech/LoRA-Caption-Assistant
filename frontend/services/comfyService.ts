@@ -3,7 +3,7 @@
  * Direct communication with ComfyUI server
  */
 
-import type { ComfyQueueStatus } from '../types';
+import type { ComfyQueueStatus, EndpointStatus } from '../types';
 
 export interface ComfyServiceConfig {
   baseUrl: string;
@@ -165,4 +165,29 @@ export const downloadComfyImage = async (
 export const generateRandomSeed = (): number => {
   // ComfyUI typically uses large integers for seeds
   return Math.floor(Math.random() * 1125899906842624); // 2^50
+};
+
+/**
+ * Check ComfyUI server status by calling /queue endpoint
+ */
+export const checkComfyServerStatus = async (
+  baseUrl: string,
+  signal?: AbortSignal,
+): Promise<EndpointStatus> => {
+  try {
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/queue`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal,
+    });
+
+    if (response.ok) {
+      return 'success';
+    }
+    return 'error';
+  } catch {
+    return 'error';
+  }
 };

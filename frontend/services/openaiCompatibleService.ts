@@ -6,6 +6,39 @@
 
 import { DEFAULT_OPENAI_COMPATIBLE_MODEL } from '../constants';
 
+// Constants
+const VIDEO_TIMEOUT_MS = 60000;
+const JPEG_QUALITY = 0.8;
+const DEFAULT_MAX_TOKENS = 1000;
+const DEFAULT_TEMPERATURE = 0.2;
+const QUALITY_CHECK_MAX_TOKENS = 10;
+const QUALITY_CHECK_MAX_FRAMES = 4;
+
+// Utility functions
+function normalizeEndpoint(baseUrl: string, path: string): string {
+  let endpoint = baseUrl;
+  if (!endpoint.includes(path)) {
+    endpoint = endpoint.replace(/\/+$/, '') + path;
+  }
+  return endpoint;
+}
+
+function buildHeaders(apiKey?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey && apiKey.trim() !== '') {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+function checkMixedContentError(endpoint: string): void {
+  if (window.location.protocol === 'https:' && endpoint.includes('http://')) {
+    throw new Error("Security Error: Mixed Content (HTTPS -> HTTP). Please use a tunnel.");
+  }
+}
+
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -38,7 +71,7 @@ const extractFramesFromVideo = async (videoFile: File, numberOfFrames: number): 
         URL.revokeObjectURL(url);
         video.src = "";
         reject(new Error("Video processing timed out"));
-    }, 60000);
+    }, VIDEO_TIMEOUT_MS);
 
     // Using onloadeddata to ensure we can seek
     video.onloadeddata = async () => {
@@ -76,8 +109,8 @@ const extractFramesFromVideo = async (videoFile: File, numberOfFrames: number): 
                 
                 // Draw frame to canvas
                 ctx.drawImage(video, 0, 0);
-                // Convert to base64 (JPEG 0.8 quality)
-                frames.push(canvas.toDataURL('image/jpeg', 0.8));
+                // Convert to base64 (JPEG quality)
+                frames.push(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
             }
             clearTimeout(timeout);
             URL.revokeObjectURL(url);
@@ -137,12 +170,8 @@ export const generateCaptionOpenAICompatible = async (
   videoFrameCount: number = 8
 ): Promise<string> => {
   if (!baseUrl) throw new Error("Endpoint URL is required for the OpenAI-compatible API.");
-  
-  let endpoint = baseUrl;
-  if (!endpoint.includes('/chat/completions')) {
-      endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
-  }
 
+  const endpoint = normalizeEndpoint(baseUrl, '/chat/completions');
   const prompt = constructPrompt(triggerWord, customInstructions, isCharacterTaggingEnabled, characterShowName);
 
   // Prepare message content (Text + Image(s))
@@ -154,7 +183,7 @@ export const generateCaptionOpenAICompatible = async (
     try {
         const frames = await extractFramesFromVideo(file, videoFrameCount);
         if (frames.length === 0) throw new Error("No frames could be extracted from the video.");
-        
+
         frames.forEach(frame => {
             contentParts.push({
                 type: "image_url",
@@ -181,17 +210,11 @@ export const generateCaptionOpenAICompatible = async (
         content: contentParts
       }
     ],
-    max_tokens: 1000,
-    temperature: 0.2
+    max_tokens: DEFAULT_MAX_TOKENS,
+    temperature: DEFAULT_TEMPERATURE
   };
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (apiKey && apiKey.trim() !== '') {
-    headers["Authorization"] = `Bearer ${apiKey}`;
-  }
+  const headers = buildHeaders(apiKey);
 
   try {
     const response = await fetch(endpoint, {
@@ -216,11 +239,10 @@ export const generateCaptionOpenAICompatible = async (
 
   } catch (error) {
     if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
-        if (window.location.protocol === 'https:' && endpoint.includes('http://')) {
-             throw new Error("Security Error: The web app is running on HTTPS, but the endpoint uses HTTP (localhost). Browsers block this. Use a tunnel (Cloudflare/Ngrok) to get an HTTPS endpoint URL.");
-        }
+        checkMixedContentError(endpoint);
+        throw new Error("Security Error: The web app is running on HTTPS, but the endpoint uses HTTP (localhost). Browsers block this. Use a tunnel (Cloudflare/Ngrok) to get an HTTPS endpoint URL.");
     }
-    
+
     if (error instanceof Error) throw error;
     throw new Error("Unknown error during OpenAI-compatible generation.");
   }
@@ -234,10 +256,7 @@ export const checkQualityOpenAICompatible = async (
   caption: string,
   videoFrameCount: number = 8
 ): Promise<number> => {
-  let endpoint = baseUrl;
-  if (!endpoint.includes('/chat/completions')) {
-      endpoint = endpoint.replace(/\/+$/, '') + '/chat/completions';
-  }
+  const endpoint = normalizeEndpoint(baseUrl, '/chat/completions');
 
   const prompt = `You are a quality assurance specialist. Evaluate the caption for the image/video.
 Caption: "${caption}"
@@ -256,9 +275,7 @@ IMPORTANT: Respond with ONLY the number.`;
 
   if (file.type.startsWith('video/')) {
     try {
-        // Use fewer frames for quality check to be faster? Or same?
-        // Let's use same consistency.
-        const frames = await extractFramesFromVideo(file, Math.min(videoFrameCount, 4)); // Optimize: Limit to 4 frames for quick check
+        const frames = await extractFramesFromVideo(file, Math.min(videoFrameCount, QUALITY_CHECK_MAX_FRAMES));
         frames.forEach(frame => {
             contentParts.push({
                 type: "image_url",
@@ -284,7 +301,7 @@ IMPORTANT: Respond with ONLY the number.`;
         content: contentParts
       }
     ],
-    max_tokens: 10,
+    max_tokens: QUALITY_CHECK_MAX_TOKENS,
     temperature: 0.1
   };
 
@@ -313,10 +330,61 @@ IMPORTANT: Respond with ONLY the number.`;
 
   } catch (error) {
     if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
-        if (window.location.protocol === 'https:' && endpoint.includes('http://')) {
-             throw new Error("Security Error: Mixed Content (HTTPS -> HTTP). Please use a tunnel.");
-        }
+        checkMixedContentError(endpoint);
     }
     throw new Error("Failed to check quality with the OpenAI-compatible API.");
+  }
+};
+
+export interface OpenAIModel {
+  id: string;
+  object: string;
+  created?: number;
+  owned_by?: string;
+}
+
+export interface OpenAIModelsResponse {
+  object: string;
+  data: OpenAIModel[];
+}
+
+export const fetchOpenAIModels = async (
+  baseUrl: string,
+  apiKey?: string
+): Promise<OpenAIModel[]> => {
+  const endpoint = normalizeEndpoint(baseUrl, '/models');
+  const headers = buildHeaders(apiKey);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers: headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+    }
+
+    const data: OpenAIModelsResponse = await response.json();
+    return data.data || [];
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+      checkMixedContentError(endpoint);
+    }
+    throw new Error(`Failed to fetch models: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+export type EndpointStatus = 'idle' | 'checking' | 'success' | 'error';
+
+export const checkEndpointStatus = async (
+  baseUrl: string,
+  apiKey?: string
+): Promise<EndpointStatus> => {
+  try {
+    await fetchOpenAIModels(baseUrl, apiKey);
+    return 'success';
+  } catch {
+    return 'error';
   }
 };

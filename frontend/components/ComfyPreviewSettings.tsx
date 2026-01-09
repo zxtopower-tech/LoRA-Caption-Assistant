@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TrashIcon, Spinner } from './Icons';
 import { listWorkflows, uploadWorkflow, deleteWorkflow } from '../services/workflowService';
-import type { WorkflowInfo } from '../types';
+import { checkComfyServerStatus } from '../services/comfyService';
+import type { WorkflowInfo, EndpointStatus } from '../types';
 import { useComfyPreview } from '../contexts/ComfyPreviewContext';
 import { useToast } from '../hooks/useToast';
 import ModalConfirm from './ModalConfirm';
+import EndpointStatusIndicator from './EndpointStatusIndicator';
 
 interface ComfyPreviewSettingsProps {
   serverUrl: string;
@@ -52,9 +54,32 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [serverStatus, setServerStatus] = useState<EndpointStatus>('idle');
+
+  // Check server status when serverUrl changes
+  useEffect(() => {
+    if (!serverUrl.trim()) {
+      setServerStatus('idle');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setServerStatus('checking');
+      const status = await checkComfyServerStatus(serverUrl);
+      setServerStatus(status);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [serverUrl]);
 
   // Load workflows on mount and after upload/delete
   useEffect(() => {
+    // Only load workflows when server status is success
+    if (serverStatus !== 'success') {
+      setWorkflows([]);
+      return;
+    }
+
     const loadWorkflows = async () => {
       setIsLoadingWorkflows(true);
       setError('');
@@ -76,7 +101,7 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
     };
 
     loadWorkflows();
-  }, [toastError]);  // Load once on mount
+  }, [toastError, serverStatus]);  // Load when serverStatus changes
 
   const handleUploadWorkflow = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -191,14 +216,17 @@ export const ComfyPreviewSettings: React.FC<ComfyPreviewSettingsProps> = ({
         <label htmlFor="comfy-server-url" className="block text-sm font-medium text-gray-300 mb-1">
           ComfyUI Server URL
         </label>
-        <input
-          id="comfy-server-url"
-          type="text"
-          value={serverUrl}
-          onChange={(e) => onServerUrlChange(e.target.value)}
-          placeholder="http://localhost:8188"
-          className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-        />
+        <div className="flex gap-2 items-center">
+          <input
+            id="comfy-server-url"
+            type="text"
+            value={serverUrl}
+            onChange={(e) => onServerUrlChange(e.target.value)}
+            placeholder="http://localhost:8188"
+            className="flex-grow p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+          />
+          <EndpointStatusIndicator status={serverStatus} size="sm" />
+        </div>
       </div>
 
       {/* Workflow Selection */}
