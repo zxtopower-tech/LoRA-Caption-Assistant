@@ -1,0 +1,46 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Check for Pre-release
+        id: check_prerelease
+        run: |
+          if [[ "${{ env.VERSION }}" == *"-"* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Update VERSION file
+        run: echo "${{ env.VERSION }}" > VERSION
+
+      - name: Create Zip Archive
+        # Exclude git metadata and github workflow files from the archive
+        run: zip -r lctaz-custom-${{ env.VERSION }}.zip . -x "*.git*" ".github*"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: lctaz-custom-${{ env.VERSION }}.zip
+          name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: ${{ env.IS_PRERELEASE }}
+          generate_release_notes: true
